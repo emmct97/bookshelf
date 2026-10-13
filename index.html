@@ -1,0 +1,1379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>My Bookshelf</title>
+<meta name="description" content="A cosy visual shelf of the books I own.">
+<meta name="theme-color" content="#6e4527" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1512" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bookshelf">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --paper: #f6efe3;
+  --paper-2: #efe4d2;
+  --card: #fffaf1;
+  --ink: #2b2118;
+  --muted: #7a6a58;
+  --line: #e2d4bf;
+  --accent: #9c4a2f;
+  --accent-ink: #fffaf1;
+  --wood-1: #9a6a43;
+  --wood-2: #7a4f2e;
+  --wood-3: #5c3a20;
+  --back: #e7d7bf;
+  --read: #4f7a4a;
+  --reading: #c08a2e;
+  --kindle: #2f4f6e;
+  --shadow: 0 1px 2px rgba(60,40,20,.12), 0 6px 18px rgba(60,40,20,.10);
+  --radius: 14px;
+  --serif: "Fraunces", Georgia, "Times New Roman", serif;
+  --sans: "Nunito Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #1b1512; --paper-2: #221a15; --card: #2a201a; --ink: #f1e6d6; --muted: #b3a28c;
+    --line: #3d2f25; --accent: #e09a6b; --accent-ink: #1b1512;
+    --wood-1: #6b4529; --wood-2: #4e311c; --wood-3: #362112; --back: #241a14;
+    --read: #8fbf86; --reading: #e8b65a; --kindle: #8fb4d9;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 22px rgba(0,0,0,.35);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #1b1512; --paper-2: #221a15; --card: #2a201a; --ink: #f1e6d6; --muted: #b3a28c;
+  --line: #3d2f25; --accent: #e09a6b; --accent-ink: #1b1512;
+  --wood-1: #6b4529; --wood-2: #4e311c; --wood-3: #362112; --back: #241a14;
+  --read: #8fbf86; --reading: #e8b65a; --kindle: #8fb4d9;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 22px rgba(0,0,0,.35);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink); font-family: var(--sans);
+  font-size: 16px; line-height: 1.45; min-height: 100vh;
+  padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  -webkit-tap-highlight-color: transparent;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: var(--accent); }
+.hidden { display: none !important; }
+
+/* ── Header ── */
+.top {
+  position: sticky; top: 0; z-index: 20; background: var(--paper);
+  padding: calc(10px + env(safe-area-inset-top)) 16px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.top-row { display: flex; align-items: center; gap: 8px; max-width: 1100px; margin: 0 auto; }
+.brand { flex: 1; min-width: 0; }
+.brand h1 { font-family: var(--serif); font-weight: 700; font-size: 1.55rem; margin: 0; letter-spacing: -.01em; line-height: 1.1; }
+.brand .stats { color: var(--muted); font-size: .82rem; }
+.icon-btn {
+  border: 1px solid var(--line); background: var(--card); border-radius: 999px;
+  height: 40px; min-width: 40px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  font-weight: 700; font-size: .85rem;
+}
+.icon-btn svg { width: 18px; height: 18px; }
+.tbr-btn { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+
+.tabs { display: flex; gap: 4px; background: var(--paper-2); border-radius: 999px; padding: 4px; max-width: 1100px; margin: 10px auto 0; }
+.tabs button { flex: 1; border: 0; background: none; border-radius: 999px; padding: 7px 0; font-weight: 700; font-size: .9rem; color: var(--muted); }
+.tabs button[aria-selected="true"] { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+
+.filters { max-width: 1100px; margin: 8px auto 0; }
+.search { position: relative; }
+.search input {
+  width: 100%; border: 1px solid var(--line); background: var(--card); border-radius: 999px;
+  padding: 9px 14px 9px 38px; outline: none;
+}
+.search input:focus { border-color: var(--accent); }
+.search svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); width: 17px; height: 17px; color: var(--muted); }
+.chips { display: flex; gap: 6px; overflow-x: auto; padding: 8px 0 2px; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chips select {
+  appearance: none; -webkit-appearance: none; border: 1px solid var(--line); background: var(--card);
+  border-radius: 999px; padding: 6px 26px 6px 12px; font-size: .84rem; font-weight: 600; flex: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 52%, calc(100% - 9px) 52%; background-size: 5px 5px; background-repeat: no-repeat;
+}
+.chips select.on { border-color: var(--accent); color: var(--accent); }
+
+main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+.empty { text-align: center; color: var(--muted); padding: 48px 16px; }
+.empty h2 { font-family: var(--serif); color: var(--ink); font-weight: 600; margin: 0 0 6px; }
+
+.banner {
+  max-width: 1068px; margin: 12px 16px 0; background: var(--card); border: 1px dashed var(--line);
+  border-radius: var(--radius); padding: 10px 14px; font-size: .86rem; color: var(--muted);
+}
+
+/* ── Covers ── */
+.cover {
+  --h: 20; position: relative; aspect-ratio: 2 / 3; border-radius: 2px 4px 4px 2px; overflow: hidden;
+  background: hsl(var(--h) 35% 38%); box-shadow: 0 1px 1px rgba(0,0,0,.2), 0 4px 10px rgba(0,0,0,.25);
+}
+.cover::before { /* spine crease */
+  content: ""; position: absolute; inset: 0 auto 0 0; width: 6%; z-index: 2;
+  background: linear-gradient(90deg, rgba(0,0,0,.18), rgba(255,255,255,.12) 60%, transparent);
+}
+.cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+.cover .fb {
+  position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between;
+  padding: 12% 10%; color: hsl(var(--h) 40% 92%); text-align: center;
+  background: linear-gradient(160deg, hsl(var(--h) 40% 42%), hsl(var(--h) 45% 26%));
+}
+.cover .fb-t { font-family: var(--serif); font-weight: 700; font-size: clamp(.55rem, 2.6cqw + .3rem, 1.2rem); line-height: 1.1; overflow: hidden; }
+.cover .fb-a { font-size: clamp(.45rem, 1.6cqw + .25rem, .85rem); opacity: .85; }
+.cover { container-type: inline-size; }
+.badge {
+  position: absolute; z-index: 3; display: grid; place-items: center; font-weight: 800; color: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.35);
+}
+.badge.read { top: 4px; right: 4px; width: 18px; height: 18px; border-radius: 50%; background: var(--read); font-size: 11px; }
+.badge.reading {
+  top: -2px; right: 8px; width: 12px; height: 24px; background: var(--reading);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%); box-shadow: none;
+}
+.badge.kindle { left: 7%; bottom: 4px; padding: 1px 5px; border-radius: 4px; background: var(--kindle); font-size: 9px; letter-spacing: .04em; }
+:root .badge.kindle { color: #fff; }
+.badge svg { width: 11px; height: 11px; }
+
+/* ── Shelf view ── */
+.bookcase {
+  --w: 68px; --plank: 14px; --gap-top: 16px; --row: calc(var(--w) * 1.5 + var(--gap-top) + var(--plank));
+  position: relative; padding: 0 12px; border-radius: 6px;
+  border: 10px solid var(--wood-2); border-top-width: 16px; border-bottom-width: 0;
+  background-color: var(--back);
+  background-image:
+    repeating-linear-gradient(to bottom,
+      transparent 0, transparent calc(var(--row) - var(--plank) - 10px),
+      rgba(0,0,0,.10) calc(var(--row) - var(--plank)),
+      var(--wood-1) calc(var(--row) - var(--plank)), var(--wood-2) calc(var(--row) - 3px), var(--wood-3) var(--row)),
+    radial-gradient(ellipse at 50% 0%, rgba(255,220,160,.25), transparent 70%);
+  box-shadow: inset 0 8px 14px rgba(0,0,0,.18), var(--shadow);
+  display: grid; grid-template-columns: repeat(auto-fill, var(--w)); grid-auto-rows: var(--row);
+  column-gap: 8px; justify-content: space-evenly;
+}
+.bookcase::after { /* plinth */
+  content: ""; position: absolute; left: -10px; right: -10px; bottom: -14px; height: 14px;
+  background: var(--wood-3); border-radius: 0 0 6px 6px;
+}
+.slot { display: flex; align-items: flex-end; justify-content: center; padding-bottom: var(--plank); }
+.slot button { border: 0; padding: 0; background: none; width: 100%; display: block; transform-origin: bottom center; transition: transform .15s; }
+.slot button:active { transform: translateY(-4px) scale(1.02); }
+@media (hover: hover) { .slot button:hover { transform: translateY(-5px); } }
+.slot .cover { width: 100%; }
+.shelf-wrap { margin-bottom: 26px; }
+@media (min-width: 640px) { .bookcase { --w: 92px; column-gap: 14px; } }
+@media (min-width: 1000px) { .bookcase { --w: 104px; } }
+
+/* ── List view ── */
+.list { display: grid; gap: 10px; }
+@media (min-width: 760px) { .list { grid-template-columns: 1fr 1fr; } }
+.row {
+  display: flex; gap: 12px; align-items: center; background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 10px; text-align: left; width: 100%;
+}
+.row .cover { width: 52px; flex: none; }
+.row .meta { min-width: 0; flex: 1; }
+.row .t { font-family: var(--serif); font-weight: 600; font-size: 1.02rem; line-height: 1.2; }
+.row .a { color: var(--muted); font-size: .88rem; }
+.row .s { color: var(--muted); font-size: .8rem; font-style: italic; }
+.pills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.pill { font-size: .72rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: var(--paper-2); color: var(--muted); }
+.pill.read { background: color-mix(in srgb, var(--read) 18%, transparent); color: var(--read); }
+.pill.reading { background: color-mix(in srgb, var(--reading) 20%, transparent); color: var(--reading); }
+.pill.kindle { background: color-mix(in srgb, var(--kindle) 18%, transparent); color: var(--kindle); }
+
+/* ── Series view ── */
+.series-card { overflow: hidden; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 14px; }
+.series-card h3 { font-family: var(--serif); font-weight: 600; margin: 0; font-size: 1.15rem; }
+.series-card .sub { color: var(--muted); font-size: .84rem; margin-bottom: 10px; }
+.progress { height: 5px; background: var(--paper-2); border-radius: 99px; overflow: hidden; margin: 6px 0 10px; }
+.progress span { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+.series-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+.sslot { flex: none; width: 64px; text-align: center; }
+.sslot button { border: 0; padding: 0; background: none; width: 100%; }
+.sslot .num { font-size: .72rem; font-weight: 700; color: var(--muted); margin-top: 4px; }
+.missing {
+  aspect-ratio: 2/3; border: 2px dashed var(--line); border-radius: 4px; display: grid; place-items: center;
+  color: var(--muted); font-family: var(--serif); font-size: 1.1rem; background: var(--paper);
+}
+
+/* ── FAB ── */
+.fab {
+  position: fixed; right: 18px; bottom: calc(20px + env(safe-area-inset-bottom)); z-index: 30;
+  height: 58px; padding: 0 22px 0 18px; border-radius: 999px; border: 0; background: var(--accent); color: var(--accent-ink);
+  font-weight: 800; font-size: 1rem; display: flex; align-items: center; gap: 8px; box-shadow: 0 8px 24px rgba(100,40,20,.35);
+}
+.fab svg { width: 24px; height: 24px; }
+
+/* ── Sheets (pop-up panels) ── */
+.sheet-bg { position: fixed; inset: 0; z-index: 50; background: rgba(20,12,6,.45); display: flex; align-items: flex-end; justify-content: center; animation: fade .18s; }
+.sheet {
+  background: var(--paper); width: 100%; max-width: 640px; max-height: 94vh; overflow-y: auto; overscroll-behavior: contain;
+  border-radius: 20px 20px 0 0; padding: 8px 16px calc(24px + env(safe-area-inset-bottom)); animation: up .22s ease-out;
+}
+@media (min-width: 700px) { .sheet-bg { align-items: center; } .sheet { border-radius: 20px; max-height: 90vh; } }
+@keyframes up { from { transform: translateY(40px); opacity: .4; } }
+@keyframes fade { from { opacity: 0; } }
+.sheet-head { position: sticky; top: -8px; background: var(--paper); z-index: 5; display: flex; align-items: center; gap: 8px; padding: 10px 0 8px; }
+.sheet-head h2 { flex: 1; margin: 0; font-family: var(--serif); font-weight: 600; font-size: 1.25rem; }
+.grab { width: 40px; height: 4px; border-radius: 4px; background: var(--line); margin: 2px auto 0; }
+
+.seg { display: flex; background: var(--paper-2); border-radius: 12px; padding: 3px; gap: 3px; }
+.seg button { flex: 1; border: 0; background: none; border-radius: 9px; padding: 8px 4px; font-weight: 700; font-size: .88rem; color: var(--muted); }
+.seg button.on { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+.seg.status button.on[data-v="Read"] { color: var(--read); }
+.seg.status button.on[data-v="Reading"] { color: var(--reading); }
+
+.btn { border: 0; border-radius: 12px; padding: 12px 16px; font-weight: 800; background: var(--accent); color: var(--accent-ink); }
+.btn.ghost { background: var(--card); color: var(--ink); border: 1px solid var(--line); font-weight: 700; }
+.btn.danger { background: none; color: #b3402a; border: 1px solid currentColor; font-weight: 700; }
+.btn.block { width: 100%; }
+.btn:disabled { opacity: .55; }
+.link-btn { border: 0; background: none; color: var(--accent); font-weight: 700; padding: 6px 0; text-decoration: underline; text-underline-offset: 3px; }
+
+label.f { display: block; margin-top: 12px; font-size: .8rem; font-weight: 700; color: var(--muted); }
+.f input, .f textarea, .f select, .inp {
+  display: block; width: 100%; margin-top: 4px; border: 1px solid var(--line); background: var(--card);
+  border-radius: 10px; padding: 10px 12px; font-size: 1rem; color: var(--ink); outline: none;
+}
+.f input:focus, .f textarea:focus, .inp:focus { border-color: var(--accent); }
+.f textarea { min-height: 140px; resize: vertical; line-height: 1.45; }
+.grid3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* add sheet */
+#reader { width: 100%; border-radius: 14px; overflow: hidden; background: #000; min-height: 220px; position: relative; }
+#reader video { width: 100% !important; display: block; }
+.scan-hint { text-align: center; color: var(--muted); font-size: .88rem; margin: 8px 0 0; }
+.inline-form { display: flex; gap: 8px; margin-top: 10px; }
+.inline-form .inp { margin: 0; }
+.inline-form .btn { flex: none; }
+.results { display: grid; gap: 8px; margin-top: 12px; }
+.status-msg { text-align: center; color: var(--muted); padding: 18px 0; }
+.spinner { width: 26px; height: 26px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 8px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* edit form */
+.edit-top { display: flex; gap: 14px; align-items: flex-start; }
+.edit-top .cover { width: 108px; flex: none; }
+.cover-actions { display: grid; gap: 6px; flex: 1; }
+.cover-actions .btn { padding: 9px 10px; font-size: .86rem; }
+.cover-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 8px; margin-top: 10px; }
+.cover-grid button { border: 2px solid transparent; padding: 0; border-radius: 5px; background: none; }
+.cover-grid button.on { border-color: var(--accent); }
+.cover-grid img { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; border-radius: 3px; background: var(--paper-2); }
+.note { background: color-mix(in srgb, var(--reading) 16%, var(--card)); border-radius: 12px; padding: 10px 12px; font-size: .88rem; margin-top: 12px; }
+.note.bad { background: color-mix(in srgb, #b3402a 14%, var(--card)); }
+.save-bar { position: sticky; bottom: calc(-24px - env(safe-area-inset-bottom)); background: var(--paper); padding: 12px 0 calc(12px + env(safe-area-inset-bottom)); margin-top: 16px; display: flex; gap: 8px; }
+.save-bar .btn { flex: 1; }
+
+/* detail */
+.detail-hero { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 6px 0 4px; }
+.detail-hero .cover { width: 180px; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+.detail-hero h2 { font-family: var(--serif); font-weight: 700; font-size: 1.5rem; margin: 16px 0 2px; line-height: 1.15; }
+.detail-hero .by { color: var(--muted); }
+.detail-hero .ser { font-style: italic; margin-top: 4px; font-size: .92rem; }
+.facts { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 12px 0; }
+.synopsis { white-space: pre-line; font-size: .96rem; }
+.synopsis.clamp { display: -webkit-box; -webkit-line-clamp: 7; -webkit-box-orient: vertical; overflow: hidden; }
+h4 { font-family: var(--serif); font-weight: 600; font-size: 1.02rem; margin: 18px 0 8px; }
+.mini-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+.mini-row .sslot { width: 62px; }
+.detail-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 18px; }
+.detail-actions .wide { grid-column: 1 / -1; text-align: center; text-decoration: none; display: block; }
+
+/* tbr */
+.tbr-stage { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 10px 0; }
+.tbr-stage .cover { width: 170px; transition: transform .2s; }
+.tbr-stage .cover.spin { animation: wobble .12s linear infinite; }
+@keyframes wobble { 50% { transform: rotate(-2deg) scale(.97); } }
+.tbr-stage h3 { font-family: var(--serif); margin: 14px 0 2px; font-size: 1.3rem; }
+
+/* menu */
+.menu-list { display: grid; gap: 8px; }
+.menu-list button, .menu-list label { text-align: left; display: flex; align-items: center; gap: 10px; }
+
+/* login */
+.login { position: fixed; inset: 0; z-index: 80; background: var(--paper); display: grid; place-items: center; padding: 24px 16px; overflow-y: auto; }
+.login-card { width: 100%; max-width: 380px; text-align: center; }
+.login-card h1 { font-family: var(--serif); font-size: 2rem; margin: 10px 0 4px; }
+.login-card p { color: var(--muted); margin: 0 0 16px; }
+.login-card .inp { margin-bottom: 10px; }
+.mini-shelf { display: flex; justify-content: center; align-items: flex-end; gap: 4px; height: 70px; border-bottom: 10px solid var(--wood-2); width: 160px; margin: 0 auto; }
+.mini-shelf i { display: block; width: 18px; border-radius: 2px 2px 0 0; }
+
+/* toast */
+.toast {
+  position: fixed; left: 50%; bottom: calc(92px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 100;
+  background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: 999px; font-weight: 700; font-size: .9rem;
+  box-shadow: var(--shadow); animation: fade .2s; max-width: calc(100% - 32px); text-align: center;
+}
+
+/* screenshot mode (for bookstagram) */
+body.display-mode .top, body.display-mode .fab, body.display-mode .banner { display: none; }
+body.display-mode main { padding-top: calc(20px + env(safe-area-inset-top)); }
+.exit-display { position: fixed; top: calc(8px + env(safe-area-inset-top)); right: 8px; z-index: 40; opacity: .35; }
+</style>
+</head>
+<body>
+
+<header class="top" id="top">
+  <div class="top-row">
+    <div class="brand">
+      <h1>My Bookshelf</h1>
+      <div class="stats" id="stats">&nbsp;</div>
+    </div>
+    <button class="icon-btn tbr-btn" id="tbrBtn" aria-label="Pick a random unread book">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1.2" fill="currentColor"/></svg>
+      TBR
+    </button>
+    <button class="icon-btn" id="menuBtn" aria-label="Menu">
+      <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+    </button>
+  </div>
+  <div class="tabs" role="tablist">
+    <button role="tab" data-view="shelf">Shelf</button>
+    <button role="tab" data-view="list">List</button>
+    <button role="tab" data-view="series">Series</button>
+  </div>
+  <div class="filters">
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="q" type="search" placeholder="Search title, author or series" autocomplete="off">
+    </div>
+    <div class="chips">
+      <select id="fStatus" aria-label="Status"><option value="">All statuses</option><option>Unread</option><option>Reading</option><option>Read</option></select>
+      <select id="fFormat" aria-label="Format"><option value="">All formats</option><option value="Physical">Physical</option><option value="Kindle">Kindle</option><option value="Both">Physical &amp; Kindle</option></select>
+      <select id="fGenre" aria-label="Genre"><option value="">All genres</option></select>
+      <select id="fSort" aria-label="Sort"><option value="recent">Recently added</option><option value="title">Title</option><option value="author">Author</option><option value="series">Series order</option></select>
+    </div>
+  </div>
+</header>
+
+<div class="banner hidden" id="localBanner">
+  Books are only being saved on this device for now. Follow <b>SETUP.md</b> (Part 2) to sync your phone and laptop.
+</div>
+
+<main id="view"></main>
+
+<button class="fab" id="addBtn" aria-label="Add a book">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+  Add book
+</button>
+
+<div id="sheetRoot"></div>
+<div id="loginRoot"></div>
+
+<script type="module">
+import { firebaseConfig } from './firebase-config.js';
+
+const FB = 'https://www.gstatic.com/firebasejs/10.12.2';
+const SCANNER_SRC = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+
+/* ═════════════ Small helpers ═════════════ */
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const hash = s => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); };
+const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+const isTouch = matchMedia('(pointer: coarse)').matches;
+
+function toast(msg, ms = 2400) {
+  $$('.toast').forEach(t => t.remove());
+  const t = document.createElement('div');
+  t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), ms);
+}
+
+async function getJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+/* ═════════════ Storage: local (this device) or Firebase (synced) ═════════════ */
+const hasFirebase = firebaseConfig && firebaseConfig.apiKey && !String(firebaseConfig.apiKey).includes('PASTE');
+
+class LocalStore {
+  constructor() { this.key = 'bookshelf.books.v1'; this.books = lsGet(this.key, []); }
+  async start(onChange) { this.onChange = onChange; onChange(this.books); }
+  persist() { lsSet(this.key, this.books); this.onChange(this.books); }
+  async save(b) { const i = this.books.findIndex(x => x.id === b.id); if (i >= 0) this.books[i] = b; else this.books.push(b); this.persist(); }
+  async remove(id) { this.books = this.books.filter(b => b.id !== id); this.persist(); }
+  signOut() {}
+}
+
+class FirebaseStore {
+  async start(onChange) {
+    const [{ initializeApp }, A, F] = await Promise.all([
+      import(`${FB}/firebase-app.js`), import(`${FB}/firebase-auth.js`), import(`${FB}/firebase-firestore.js`)
+    ]);
+    this.A = A; this.F = F;
+    const app = initializeApp(firebaseConfig);
+    this.auth = A.getAuth(app);
+    try {
+      this.db = F.initializeFirestore(app, { localCache: F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }) });
+    } catch { this.db = F.getFirestore(app); }
+    A.onAuthStateChanged(this.auth, user => {
+      if (this.unsub) { this.unsub(); this.unsub = null; }
+      if (!user) { onChange([]); showLogin(this); return; }
+      hideLogin();
+      this.col = F.collection(this.db, 'users', user.uid, 'books');
+      this.unsub = F.onSnapshot(this.col,
+        snap => onChange(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+        err => toast('Sync problem: ' + (err.code || err.message) + ' (see SETUP.md, Part 2)', 6000));
+    });
+  }
+  async save(b) {
+    // Not awaited on purpose: works offline and syncs when back online.
+    this.F.setDoc(this.F.doc(this.col, b.id), b).catch(e => toast('Could not save: ' + (e.code || e.message), 5000));
+  }
+  async remove(id) { this.F.deleteDoc(this.F.doc(this.col, id)).catch(e => toast('Could not delete: ' + (e.code || e.message), 5000)); }
+  signOut() { this.A.signOut(this.auth); }
+}
+
+/* ═════════════ App state ═════════════ */
+const state = {
+  books: [],
+  view: lsGet('bookshelf.view', 'shelf'),
+  q: '',
+  status: lsGet('bookshelf.fStatus', ''),
+  format: lsGet('bookshelf.fFormat', ''),
+  genre: lsGet('bookshelf.fGenre', ''),
+  sort: lsGet('bookshelf.fSort', 'recent'),
+};
+const store = hasFirebase ? new FirebaseStore() : new LocalStore();
+if (!hasFirebase) $('#localBanner').classList.remove('hidden');
+
+/* ═════════════ Covers ═════════════ */
+function coverHTML(b, { badges = true } = {}) {
+  const hue = hash((b.title || '') + (b.author || '')) % 360;
+  let badge = '';
+  if (badges) {
+    if (b.status === 'Read') badge += `<span class="badge read" title="Read"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>`;
+    if (b.status === 'Reading') badge += `<span class="badge reading" title="Reading"></span>`;
+    if (b.format === 'Kindle' || b.format === 'Both') badge += `<span class="badge kindle" title="${b.format === 'Both' ? 'Physical + Kindle' : 'Kindle'}">${b.format === 'Both' ? 'K+' : 'K'}</span>`;
+  }
+  return `<div class="cover" style="--h:${hue}">
+    <div class="fb"><span class="fb-t">${esc(b.title || 'Untitled')}</span><span class="fb-a">${esc(b.author || '')}</span></div>
+    ${b.cover ? `<img src="${esc(b.cover)}" alt="${esc(b.title)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
+    ${badge}
+  </div>`;
+}
+
+/* ═════════════ Filtering & sorting ═════════════ */
+const sortTitle = t => norm(t).replace(/^(the|a|an) /, '');
+const authorLast = a => { const first = String(a || '').split(/,|&| and /)[0].trim(); const parts = first.split(/\s+/); return norm(parts[parts.length - 1] + ' ' + first); };
+const seriesKey = s => norm(s);
+
+function filtered() {
+  const q = norm(state.q);
+  let list = state.books.filter(b =>
+    (!q || norm(`${b.title} ${b.author} ${b.series}`).includes(q)) &&
+    (!state.status || (b.status || 'Unread') === state.status) &&
+    (!state.format || b.format === state.format || (state.format !== 'Both' && b.format === 'Both')) &&
+    (!state.genre || (b.genre || '') === state.genre)
+  );
+  const by = {
+    recent: (a, b) => (b.addedAt || 0) - (a.addedAt || 0),
+    title: (a, b) => sortTitle(a.title).localeCompare(sortTitle(b.title)),
+    author: (a, b) => authorLast(a.author).localeCompare(authorLast(b.author)) || seriesCmp(a, b),
+    series: seriesCmp,
+  }[state.sort] || ((a, b) => 0);
+  return list.sort(by);
+}
+function seriesCmp(a, b) {
+  const sa = seriesKey(a.series), sb = seriesKey(b.series);
+  if (sa && !sb) return -1;
+  if (!sa && sb) return 1;
+  if (sa !== sb) return sa.localeCompare(sb);
+  if (sa) return (a.seriesNum ?? 999) - (b.seriesNum ?? 999);
+  return sortTitle(a.title).localeCompare(sortTitle(b.title));
+}
+
+/* ═════════════ Rendering ═════════════ */
+function render() {
+  const books = state.books;
+  const unread = books.filter(b => (b.status || 'Unread') === 'Unread').length;
+  $('#stats').textContent = books.length
+    ? `${books.length} book${books.length === 1 ? '' : 's'} · ${unread} unread · ${books.filter(b => b.status === 'Read').length} read`
+    : 'Your shelf is waiting';
+
+  $$('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.view === state.view)));
+
+  // genre options from your own books
+  const genres = [...new Set(books.map(b => b.genre).filter(Boolean))].sort();
+  const gSel = $('#fGenre');
+  gSel.innerHTML = `<option value="">All genres</option>` + genres.map(g => `<option ${g === state.genre ? 'selected' : ''}>${esc(g)}</option>`).join('');
+  $('#fStatus').value = state.status; $('#fFormat').value = state.format; $('#fSort').value = state.sort;
+  ['#fStatus', '#fFormat', '#fGenre'].forEach(s => $(s).classList.toggle('on', !!$(s).value));
+  $('#fSort').classList.toggle('on', state.sort !== 'recent');
+
+  const v = $('#view');
+  if (!books.length) {
+    v.innerHTML = `<div class="empty"><h2>Your shelves are empty</h2><p>Tap <b>Add book</b> and scan the barcode on the back of a book to get started.</p></div>`;
+    return;
+  }
+  const list = filtered();
+  if (!list.length) {
+    v.innerHTML = `<div class="empty"><h2>No matches</h2><p>Nothing on your shelves matches these filters.</p><button class="btn ghost" id="clearF">Clear filters</button></div>`;
+    $('#clearF').onclick = clearFilters;
+    return;
+  }
+  if (state.view === 'list') v.innerHTML = renderList(list);
+  else if (state.view === 'series') v.innerHTML = renderSeries(list);
+  else v.innerHTML = renderShelf(list);
+}
+
+function renderShelf(list) {
+  return `<div class="shelf-wrap"><div class="bookcase">${list.map(b => {
+    const h = 92 + (hash(b.id) % 9); // small height variation, like real books
+    return `<div class="slot"><button data-open="${b.id}" style="width:${h}%" aria-label="${esc(b.title)}">${coverHTML(b)}</button></div>`;
+  }).join('')}</div></div>`;
+}
+
+function seriesLabel(b) {
+  if (!b.series) return '';
+  let s = b.series;
+  if (b.seriesNum != null && b.seriesNum !== '') s += ` #${b.seriesNum}`;
+  return s;
+}
+
+function renderList(list) {
+  return `<div class="list">${list.map(b => `
+    <button class="row" data-open="${b.id}">
+      ${coverHTML(b, { badges: false })}
+      <div class="meta">
+        <div class="t">${esc(b.title)}</div>
+        <div class="a">${esc(b.author)}</div>
+        ${b.series ? `<div class="s">${esc(seriesLabel(b))}</div>` : ''}
+        <div class="pills">
+          ${b.status && b.status !== 'Unread' ? `<span class="pill ${b.status.toLowerCase()}">${b.status}</span>` : `<span class="pill">Unread</span>`}
+          ${b.format && b.format !== 'Physical' ? `<span class="pill kindle">${b.format === 'Both' ? 'Physical + Kindle' : 'Kindle'}</span>` : ''}
+          ${b.genre ? `<span class="pill">${esc(b.genre)}</span>` : ''}
+        </div>
+      </div>
+    </button>`).join('')}</div>`;
+}
+
+function seriesGroups(allBooks) {
+  const groups = new Map();
+  for (const b of allBooks) {
+    if (!b.series) continue;
+    const k = seriesKey(b.series);
+    if (!groups.has(k)) groups.set(k, { name: b.series, books: [], total: 0 });
+    const g = groups.get(k);
+    g.books.push(b);
+    g.total = Math.max(g.total, Number(b.seriesTotal) || 0);
+  }
+  return groups;
+}
+
+function seriesSlots(g) {
+  const numbered = g.books.filter(b => b.seriesNum != null && b.seriesNum !== '' && !isNaN(b.seriesNum));
+  const maxNum = Math.max(0, ...numbered.map(b => Math.floor(Number(b.seriesNum))));
+  const end = Math.max(g.total, maxNum);
+  const slots = [];
+  for (let n = 1; n <= end; n++) {
+    const owned = numbered.filter(b => Math.floor(Number(b.seriesNum)) === n).sort((a, b) => a.seriesNum - b.seriesNum);
+    if (owned.length) owned.forEach(b => slots.push({ n: b.seriesNum, b }));
+    else slots.push({ n, missing: true });
+  }
+  g.books.filter(b => !numbered.includes(b)).forEach(b => slots.push({ n: '?', b }));
+  return slots;
+}
+
+function renderSeries(list) {
+  const groups = seriesGroups(state.books); // gaps are based on everything you own...
+  const showKeys = new Set(list.filter(b => b.series).map(b => seriesKey(b.series))); // ...but only series matching filters are shown
+  const shown = [...groups.entries()].filter(([k]) => showKeys.has(k)).sort((a, b) => sortTitle(a[1].name).localeCompare(sortTitle(b[1].name)));
+  const standalone = list.filter(b => !b.series).length;
+  if (!shown.length) return `<div class="empty"><h2>No series yet</h2><p>Add a series name and book number to a book (tap it, then Edit) and it will appear here.</p></div>`;
+  return shown.map(([, g]) => {
+    const slots = seriesSlots(g);
+    const known = slots.filter(s => s.n !== '?');
+    const ownedCount = known.filter(s => !s.missing).length;
+    const totalTxt = g.total ? `${ownedCount} of ${g.total} owned` : `${g.books.length} owned`;
+    const missing = known.filter(s => s.missing).length;
+    const pct = g.total ? Math.min(100, Math.round(ownedCount / g.total * 100)) : 100;
+    return `<section class="series-card">
+      <h3>${esc(g.name)}</h3>
+      <div class="sub">${esc(g.books[0].author || '')} · ${totalTxt}${missing ? ` · missing ${missing}` : ''}</div>
+      ${g.total ? `<div class="progress"><span style="width:${pct}%"></span></div>` : ''}
+      <div class="series-row">${slots.map(s => s.missing
+        ? `<div class="sslot"><div class="missing">${s.n}</div><div class="num">Missing</div></div>`
+        : `<div class="sslot"><button data-open="${s.b.id}">${coverHTML(s.b)}</button><div class="num">#${esc(s.n)}</div></div>`).join('')}
+      </div>
+    </section>`;
+  }).join('') + (standalone ? `<p class="empty" style="padding:8px">+ ${standalone} standalone book${standalone === 1 ? '' : 's'} not in a series</p>` : '');
+}
+
+/* ═════════════ Sheets (pop-up panels) ═════════════ */
+let sheetCleanup = null;
+function openSheet(title, bodyHTML, { onClose } = {}) {
+  closeSheet(true);
+  const root = $('#sheetRoot');
+  root.innerHTML = `<div class="sheet-bg"><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+    <div class="grab"></div>
+    <div class="sheet-head"><h2>${esc(title)}</h2><button class="icon-btn" data-close aria-label="Close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <div class="sheet-body">${bodyHTML}</div></div></div>`;
+  const bg = $('.sheet-bg', root);
+  bg.addEventListener('click', e => { if (e.target === bg || e.target.closest('[data-close]')) closeSheet(); });
+  sheetCleanup = onClose || null;
+  document.body.style.overflow = 'hidden';
+  if (!history.state || !history.state.sheet) history.pushState({ sheet: 1 }, '');
+  return $('.sheet-body', root);
+}
+function closeSheet(replacing = false) {
+  const root = $('#sheetRoot');
+  if (!root.innerHTML) return;
+  if (sheetCleanup) { try { sheetCleanup(); } catch {} sheetCleanup = null; }
+  root.innerHTML = '';
+  document.body.style.overflow = '';
+  if (!replacing && history.state && history.state.sheet) history.back();
+}
+addEventListener('popstate', () => { if ($('#sheetRoot').innerHTML) { if (sheetCleanup) { try { sheetCleanup(); } catch {} sheetCleanup = null; } $('#sheetRoot').innerHTML = ''; document.body.style.overflow = ''; } });
+addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+
+/* ═════════════ Book lookups (Google Books + Open Library) ═════════════ */
+const cleanText = s => String(s || '')
+  .replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n').replace(/<[^>]+>/g, '')
+  .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ')
+  .replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+
+function cleanOLDesc(d) {
+  let s = typeof d === 'string' ? d : (d && d.value) || '';
+  s = s.split(/\n-{3,}|\(\[source\]|\[source\]/i)[0];
+  return cleanText(s.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1'));
+}
+
+function normIsbn(s) {
+  const d = String(s || '').replace(/[^0-9Xx]/g, '').toUpperCase();
+  return d.length === 10 || d.length === 13 ? d : null;
+}
+function isbn10to13(i) {
+  if (!i || i.length !== 10) return i;
+  const core = '978' + i.slice(0, 9);
+  let sum = 0;
+  for (let k = 0; k < 12; k++) sum += +core[k] * (k % 2 ? 3 : 1);
+  return core + ((10 - (sum % 10)) % 10);
+}
+
+function tidySeries(s) {
+  return String(s || '').replace(/\s+(series|sequence)\s*$/i, '').replace(/^[\s,;:(#-]+|[\s,;:(#-]+$/g, '').trim();
+}
+// "Throne of Glass ; 1", "The Hunger Games, #2", "Empyrean (1)", "Shadowhunter Chronicles. The mortal instruments ; bk. 3"
+function parseSeries(str) {
+  if (!str) return null;
+  const m = String(str).match(/^(.*?)[\s,;:(#.-]*(?:book|bk\.?|vol\.?|volume|no\.?|number|#|part)?\s*(\d+(?:\.\d+)?)\)?\s*$/i);
+  if (m && m[1].trim()) return { series: tidySeries(m[1]), num: Number(m[2]) };
+  return { series: tidySeries(str), num: null };
+}
+// "Crown of Midnight (Throne of Glass, Book 2)" → title + series
+function splitSeriesFromTitle(title, subtitle) {
+  let t = String(title || '').trim(), series = '', num = null;
+  const m = t.match(/\s*\(([^()]+?),?\s*(?:book|bk\.?|vol\.?|volume|#|no\.?)\s*(\d+(?:\.\d+)?)\)\s*$/i);
+  if (m) { series = tidySeries(m[1]); num = Number(m[2]); t = t.slice(0, m.index).trim(); }
+  if (!series && subtitle) {
+    const s1 = String(subtitle).match(/book\s*(\d+(?:\.\d+)?)\s*(?:of|in)\s*(?:the\s*)?(.+?)(?:\s*series)?$/i);
+    const s2 = String(subtitle).match(/^(?:an?|the)\s+(.+?)\s+(?:novel|book)$/i);
+    if (s1) { num = Number(s1[1]); series = tidySeries(s1[2]); }
+    else if (s2) series = tidySeries(s2[1]);
+  }
+  return { title: t, series, num };
+}
+
+function guessGenre(tags) {
+  const t = tags.join(' | ').toLowerCase();
+  if (!t) return '';
+  const has = re => re.test(t);
+  if (has(/fantasy/) && has(/romance|love stories/)) return 'Romantasy';
+  if (has(/comic|graphic novel|manga/)) return 'Graphic Novel';
+  if (has(/poetry/)) return 'Poetry';
+  if (has(/horror/)) return 'Horror';
+  if (has(/science fiction|sci-fi|dystopi|space opera/)) return 'Science Fiction';
+  if (has(/fantasy|magic|dragons|fairy tales/)) return 'Fantasy';
+  if (has(/thriller|suspense/)) return 'Thriller';
+  if (has(/mystery|detective|crime/)) return 'Mystery';
+  if (has(/historical fiction|fiction \/ historical/)) return 'Historical Fiction';
+  if (has(/romance|love stories/)) return 'Romance';
+  if (has(/young adult/)) return 'Young Adult';
+  if (has(/classics|classic literature/)) return 'Classics';
+  if (has(/literary/)) return 'Literary Fiction';
+  if (has(/fiction/)) return 'Fiction';
+  if (has(/biography|memoir|autobiography/)) return 'Memoir';
+  if (has(/self-help|history|science|business|psychology|cooking|travel|nonfiction|non-fiction|philosophy/)) return 'Non-fiction';
+  return '';
+}
+
+const olCover = (id, size = 'L') => `https://covers.openlibrary.org/b/id/${id}-${size}.jpg`;
+const yearOf = s => { const m = String(s || '').match(/\b(1[5-9]\d\d|20\d\d)\b/); return m ? m[1] : ''; };
+
+function fromGoogle(item) {
+  const v = item.volumeInfo || {};
+  const ids = v.industryIdentifiers || [];
+  const isbn = ((ids.find(i => i.type === 'ISBN_13') || ids.find(i => i.type === 'ISBN_10')) || {}).identifier || '';
+  const covers = [];
+  if (v.imageLinks) {
+    covers.push(`https://books.google.com/books/publisher/content/images/frontcover/${item.id}?fife=w600-h900&source=gbs_api`);
+    const thumb = v.imageLinks.extraLarge || v.imageLinks.large || v.imageLinks.medium || v.imageLinks.thumbnail;
+    if (thumb) covers.push(thumb.replace(/^http:/, 'https:').replace('&edge=curl', ''));
+  }
+  const sNum = v.seriesInfo && v.seriesInfo.bookDisplayNumber ? Number(v.seriesInfo.bookDisplayNumber) : null;
+  return {
+    source: 'google', title: v.title || '', subtitle: v.subtitle || '', author: (v.authors || []).join(', '),
+    synopsis: cleanText(v.description), categories: v.categories || [], year: yearOf(v.publishedDate),
+    isbn: isbn10to13(isbn), covers, seriesNum: isNaN(sNum) ? null : sNum,
+  };
+}
+
+async function googleByIsbn(isbn) {
+  const d = await getJSON(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
+  if (!d.items || !d.items.length) return null;
+  let item = d.items[0];
+  try { item = await getJSON(`https://www.googleapis.com/books/v1/volumes/${item.id}`); } catch {}
+  return fromGoogle(item);
+}
+
+async function olWorkExtras(workKey) {
+  const out = {};
+  try {
+    const w = await getJSON(`https://openlibrary.org${workKey}.json`);
+    out.synopsis = cleanOLDesc(w.description);
+    out.subjects = w.subjects || [];
+    out.year = yearOf(w.first_publish_date);
+    out.covers = (w.covers || []).filter(c => c > 0).slice(0, 6).map(c => olCover(c));
+    const aKey = w.authors && w.authors[0] && w.authors[0].author && w.authors[0].author.key;
+    if (aKey) out.authorKey = aKey;
+  } catch {}
+  return out;
+}
+
+async function olByIsbn(isbn) {
+  const ed = await getJSON(`https://openlibrary.org/isbn/${isbn}.json`);
+  const out = { source: 'ol', title: ed.title || '', subtitle: ed.subtitle || '', isbn, covers: [], subjects: [] };
+  (ed.covers || []).filter(c => c > 0).forEach(c => out.covers.push(olCover(c)));
+  if (ed.series && ed.series.length) { const p = parseSeries(ed.series[0]); out.series = p.series; out.seriesNum = p.num; }
+  out.year = yearOf(ed.publish_date);
+  const workKey = ed.works && ed.works[0] && ed.works[0].key;
+  const extras = workKey ? await olWorkExtras(workKey) : {};
+  out.synopsis = extras.synopsis || cleanOLDesc(ed.description);
+  out.subjects = extras.subjects || [];
+  if (extras.year && (!out.year || extras.year < out.year)) out.year = extras.year;
+  (extras.covers || []).forEach(c => out.covers.push(c));
+  out.workKey = workKey;
+  const aKey = (ed.authors && ed.authors[0] && ed.authors[0].key) || extras.authorKey;
+  if (aKey) { try { out.author = (await getJSON(`https://openlibrary.org${aKey}.json`)).name || ''; } catch {} }
+  return out;
+}
+
+const first = (...v) => v.find(x => x != null && x !== '' && !(typeof x === 'number' && isNaN(x)));
+const uniq = arr => [...new Set(arr.filter(Boolean))];
+
+function mergeResults(G, O, isbn) {
+  const tG = G ? splitSeriesFromTitle(G.title, G.subtitle) : {};
+  const tO = O ? splitSeriesFromTitle(O.title, O.subtitle) : {};
+  const years = [G && G.year, O && O.year].filter(Boolean).sort();
+  return {
+    title: first(tG.title, tO.title) || '',
+    author: first(G && G.author, O && O.author) || '',
+    series: first(O && O.series, tG.series, tO.series) || '',
+    seriesNum: first(O && O.seriesNum, tG.num, tO.num, G && G.seriesNum) ?? null,
+    synopsis: first(G && G.synopsis, O && O.synopsis) || '',
+    genre: guessGenre([...(G && G.categories || []), ...(O && O.subjects || []).slice(0, 40)]),
+    year: years[0] || '',
+    isbn: isbn || first(G && G.isbn, O && O.isbn) || '',
+    coverOptions: uniq([...(O && O.covers || []), ...(G && G.covers || [])]),
+    workKey: O && O.workKey,
+  };
+}
+
+async function lookupIsbn(raw) {
+  const n = normIsbn(raw);
+  if (!n) return null;
+  const isbn = isbn10to13(n);
+  const [g, o] = await Promise.allSettled([googleByIsbn(isbn), olByIsbn(isbn)]);
+  const G = g.status === 'fulfilled' ? g.value : null;
+  const O = o.status === 'fulfilled' ? o.value : null;
+  if (!G && !O) return null;
+  const r = mergeResults(G, O, isbn);
+  if (!r.coverOptions.length) r.coverOptions = [`https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg?default=false`];
+  return r;
+}
+
+async function searchBooks(q) {
+  const [g, o] = await Promise.allSettled([
+    getJSON(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=15&printType=books`),
+    getJSON(`https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=15&fields=key,title,author_name,first_publish_year,cover_i,isbn,subject`),
+  ]);
+  const G = g.status === 'fulfilled' ? (g.value.items || []).map(fromGoogle) : [];
+  const O = o.status === 'fulfilled' ? (o.value.docs || []).map(d => ({
+    source: 'ol', title: d.title || '', author: (d.author_name || []).join(', '), year: d.first_publish_year ? String(d.first_publish_year) : '',
+    covers: d.cover_i ? [olCover(d.cover_i)] : [], subjects: (d.subject || []).slice(0, 40), workKey: d.key,
+    // Prefer English-language ISBNs (978-0 / 978-1) so you get the edition you're likely holding.
+    isbn: ((d.isbn || []).find(i => /^978[01]\d{9}$/.test(i)) || (d.isbn || []).find(i => /^97[89]\d{10}$/.test(i)) || ''),
+  })) : [];
+  const out = [], seen = new Map();
+  const len = Math.max(G.length, O.length);
+  for (let i = 0; i < len; i++) for (const c of [G[i], O[i]]) {
+    if (!c || !c.title) continue;
+    const k = norm(splitSeriesFromTitle(c.title).title) + '|' + norm(String(c.author).split(',')[0]);
+    if (seen.has(k)) { const ex = seen.get(k); ex.covers = uniq([...ex.covers, ...c.covers]); if (!ex.isbn) ex.isbn = c.isbn; if (!ex.workKey) ex.workKey = c.workKey; continue; }
+    seen.set(k, c); out.push(c);
+  }
+  return out;
+}
+
+async function candidateToBook(c) {
+  let full = c.isbn ? await lookupIsbn(c.isbn).catch(() => null) : null;
+  const base = mergeResults(c.source === 'google' ? c : null, c.source === 'ol' ? c : null, c.isbn);
+  if (!full) {
+    full = base;
+    if (c.workKey && !full.synopsis) { const x = await olWorkExtras(c.workKey); full.synopsis = x.synopsis || ''; full.coverOptions = uniq([...full.coverOptions, ...(x.covers || [])]); }
+  } else {
+    // The thing you tapped wins for title/author; the ISBN lookup fills in the rest.
+    full.title = base.title || full.title; full.author = base.author || full.author;
+    full.coverOptions = uniq([...base.coverOptions, ...full.coverOptions]);
+    if (!full.genre) full.genre = base.genre;
+  }
+  return full;
+}
+
+async function findOtherCovers(title, author) {
+  const q = `${title} ${String(author || '').split(',')[0]}`.trim();
+  const covers = [];
+  const [g, o] = await Promise.allSettled([
+    getJSON(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=20&printType=books`),
+    getJSON(`https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=5&fields=key,cover_i`),
+  ]);
+  if (o.status === 'fulfilled') {
+    const docs = o.value.docs || [];
+    docs.forEach(d => d.cover_i && covers.push(olCover(d.cover_i)));
+    if (docs[0] && docs[0].key) {
+      try {
+        const eds = await getJSON(`https://openlibrary.org${docs[0].key}/editions.json?limit=60`);
+        (eds.entries || []).forEach(e => (e.covers || []).filter(c => c > 0).forEach(c => covers.push(olCover(c))));
+      } catch {}
+    }
+  }
+  if (g.status === 'fulfilled') (g.value.items || []).forEach(it => fromGoogle(it).covers.slice(0, 1).forEach(c => covers.push(c)));
+  return uniq(covers).slice(0, 48);
+}
+
+function parseAmazon(url) {
+  const s = String(url || '').trim();
+  const m = s.match(/(?:\/dp\/|\/gp\/product\/|\/gp\/aw\/d\/|\/ASIN\/|\/d\/)([A-Z0-9]{10})(?:[/?]|$)/i);
+  const asin = m ? m[1].toUpperCase() : '';
+  const slugM = s.match(/amazon\.[^/]+\/([^/?]+)\/(?:dp|gp)\//i);
+  const slug = slugM ? decodeURIComponent(slugM[1]).replace(/-/g, ' ')
+    .replace(/\b(kindle edition|ebook|e book|paperback|hardcover|audible audiobook|kindle)\b/ig, '').replace(/\s+/g, ' ').trim() : '';
+  const short = /(amzn\.(?:to|eu|asia)|a\.co)\//i.test(s) && !asin;
+  return {
+    asin, slug, short,
+    isbn: /^\d{9}[\dX]$/.test(asin) ? asin : null,
+    isKindle: /^B0/.test(asin) || /kindle|ebook/i.test(s),
+  };
+}
+
+/* ═════════════ Image upload → small JPEG stored with the book ═════════════ */
+function fileToCover(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const maxH = 750, scale = Math.min(1, maxH / img.height);
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/jpeg', 0.8));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that image')); };
+    img.src = url;
+  });
+}
+
+/* ═════════════ Add book sheet: Scan / Search / Link ═════════════ */
+let scanner = null;
+async function loadScannerLib() {
+  if (window.Html5Qrcode) return;
+  await new Promise((res, rej) => { const s = document.createElement('script'); s.src = SCANNER_SRC; s.onload = res; s.onerror = () => rej(new Error('Scanner failed to load')); document.head.appendChild(s); });
+}
+async function stopScanner() {
+  const s = scanner; scanner = null;
+  if (s) { try { if (s.isScanning) await s.stop(); s.clear(); } catch {} }
+}
+
+function openAdd(tab = isTouch ? 'scan' : 'search') {
+  const body = openSheet('Add a book', `
+    <div class="seg" id="addTabs">
+      <button data-t="scan">Scan</button><button data-t="search">Search</button><button data-t="link">Amazon link</button>
+    </div>
+    <div id="addPane" style="margin-top:14px"></div>
+    <div style="text-align:center;margin-top:14px"><button class="link-btn" id="manualBtn">Add by hand instead</button></div>
+  `, { onClose: stopScanner });
+  $$('#addTabs button', body).forEach(b => b.onclick = () => showTab(b.dataset.t));
+  $('#manualBtn', body).onclick = () => { stopScanner(); openEdit({ isbn: '' }, { isNew: true }); };
+  showTab(tab);
+
+  async function showTab(t) {
+    await stopScanner();
+    $$('#addTabs button', body).forEach(b => b.classList.toggle('on', b.dataset.t === t));
+    const pane = $('#addPane', body);
+    if (t === 'scan') {
+      pane.innerHTML = `
+        <div id="reader"></div>
+        <p class="scan-hint" id="scanHint">Point your camera at the barcode on the back of the book.</p>
+        <form class="inline-form" id="isbnForm"><input class="inp" id="isbnIn" inputmode="numeric" placeholder="…or type the ISBN" autocomplete="off"><button class="btn">Look up</button></form>
+        <div id="scanResult"></div>`;
+      $('#isbnForm', pane).onsubmit = e => { e.preventDefault(); const v = $('#isbnIn', pane).value; if (normIsbn(v)) handleIsbn(v); else toast('That doesn’t look like an ISBN (10 or 13 digits)'); };
+      startScanner(pane);
+    } else if (t === 'search') {
+      pane.innerHTML = `
+        <form class="inline-form" id="searchForm" style="margin-top:0"><input class="inp" id="searchIn" type="search" placeholder="Title, author or ISBN" autocomplete="off"><button class="btn">Search</button></form>
+        <div class="results" id="results"></div>`;
+      const inp = $('#searchIn', pane);
+      if (!isTouch) inp.focus();
+      $('#searchForm', pane).onsubmit = e => { e.preventDefault(); const v = inp.value.trim(); if (!v) return; if (normIsbn(v) && /^[\d\s-xX]+$/.test(v)) handleIsbn(v); else runSearch(v, $('#results', pane)); };
+    } else {
+      pane.innerHTML = `
+        <p style="margin:0 0 8px;color:var(--muted);font-size:.9rem">Paste a link to the book on Amazon (Kindle or paperback). Tip: on the Amazon website, copy the full address from the address bar.</p>
+        <textarea class="inp" id="linkIn" rows="3" placeholder="https://www.amazon.co.uk/…/dp/…"></textarea>
+        <button class="btn block" id="linkGo" style="margin-top:8px">Find this book</button>
+        <div class="results" id="results"></div>`;
+      $('#linkGo', pane).onclick = () => {
+        const p = parseAmazon($('#linkIn', pane).value);
+        const out = $('#results', pane);
+        const defaults = p.isKindle ? { format: 'Kindle' } : {};
+        if (p.isbn) return handleIsbn(p.isbn, defaults);
+        if (p.slug) { $('#linkIn', pane).blur(); return runSearch(p.slug, out, defaults); }
+        out.innerHTML = `<div class="note bad">${p.short
+          ? 'Short share links (like a.co/… or amzn.eu/…) can’t be read. Open the link in your browser, then copy the full address from the address bar and paste that instead.'
+          : 'I couldn’t read a book from that link. Try the Search tab with the title instead.'}</div>`;
+      };
+    }
+  }
+
+  async function startScanner(pane) {
+    const reader = $('#reader', pane), hint = $('#scanHint', pane);
+    try {
+      await loadScannerLib();
+      if (!$('#reader')) return; // sheet closed while loading
+      const fmts = window.Html5QrcodeSupportedFormats;
+      scanner = new window.Html5Qrcode('reader', { formatsToSupport: [fmts.EAN_13], experimentalFeatures: { useBarCodeDetectorIfSupported: true }, verbose: false });
+      let done = false;
+      await scanner.start({ facingMode: 'environment' },
+        { fps: 12, qrbox: (w, h) => ({ width: Math.min(300, w * 0.85), height: Math.min(150, h * 0.45) }) },
+        text => {
+          if (done || !/^97[89]\d{10}$/.test(text)) return;
+          done = true;
+          if (navigator.vibrate) navigator.vibrate(60);
+          stopScanner();
+          handleIsbn(text);
+        }, () => {});
+    } catch (e) {
+      reader.style.minHeight = '0';
+      hint.innerHTML = `Couldn’t start the camera${e && e.name === 'NotAllowedError' ? ' (camera permission was blocked; allow it in your browser settings)' : ''}. You can type the ISBN below instead.`;
+    }
+  }
+
+  async function runSearch(q, out, defaults = {}) {
+    out.innerHTML = `<div class="status-msg"><div class="spinner"></div>Searching…</div>`;
+    let list = [];
+    try { list = await searchBooks(q); } catch {}
+    if (!list.length) { out.innerHTML = `<div class="status-msg">No books found. Try fewer words, or <button class="link-btn" id="manual2">add it by hand</button>.</div>`; $('#manual2', out).onclick = () => openEdit({ title: q, ...defaults }, { isNew: true }); return; }
+    out.innerHTML = `<p style="margin:4px 0 0;color:var(--muted);font-size:.85rem">Tap the right one. You can check and edit everything next.</p>` + list.map((c, i) => `
+      <button class="row" data-i="${i}">
+        ${coverHTML({ title: c.title, author: c.author, cover: c.covers[0] }, { badges: false })}
+        <div class="meta"><div class="t">${esc(c.title)}</div><div class="a">${esc(c.author)}</div><div class="s">${esc(c.year || '')}</div></div>
+      </button>`).join('');
+    $$('[data-i]', out).forEach(btn => btn.onclick = async () => {
+      out.innerHTML = `<div class="status-msg"><div class="spinner"></div>Getting the details…</div>`;
+      const b = await candidateToBook(list[+btn.dataset.i]);
+      openEdit({ ...b, ...defaults }, { isNew: true });
+    });
+  }
+
+  async function handleIsbn(raw, defaults = {}) {
+    const out = $('#scanResult') || $('#results');
+    if (out) out.innerHTML = `<div class="status-msg"><div class="spinner"></div>Looking up ${esc(raw)}…</div>`;
+    const r = await lookupIsbn(raw).catch(() => null);
+    const isbn = isbn10to13(normIsbn(raw));
+    if (!r) {
+      toast('Couldn’t find that ISBN, so you can fill it in yourself', 3500);
+      return openEdit({ isbn, ...defaults }, { isNew: true });
+    }
+    openEdit({ ...r, ...defaults }, { isNew: true });
+  }
+}
+
+/* ═════════════ Review / edit form ═════════════ */
+function findDuplicate(b) {
+  return state.books.find(x => x.id !== b.id && (
+    (b.isbn && x.isbn && x.isbn === b.isbn) ||
+    (b.title && norm(x.title) === norm(b.title) && norm(String(x.author).split(',')[0]) === norm(String(b.author).split(',')[0]))
+  ));
+}
+
+function openEdit(data, { isNew = false } = {}) {
+  const b = {
+    id: data.id || uid(), title: data.title || '', author: data.author || '', series: data.series || '',
+    seriesNum: data.seriesNum ?? '', seriesTotal: data.seriesTotal ?? '', synopsis: data.synopsis || '',
+    genre: data.genre || '', year: data.year || '', isbn: data.isbn || '',
+    format: data.format || 'Physical', status: data.status || 'Unread',
+    cover: data.cover || (data.coverOptions && data.coverOptions[0]) || '', addedAt: data.addedAt || Date.now(),
+  };
+  // If this series already exists on your shelf, reuse its spelling and total.
+  if (isNew && b.series) {
+    const ex = state.books.find(x => seriesKey(x.series) === seriesKey(b.series));
+    if (ex) { b.series = ex.series; if (!b.seriesTotal && ex.seriesTotal) b.seriesTotal = ex.seriesTotal; }
+  }
+  let coverOptions = uniq([b.cover, ...(data.coverOptions || [])]);
+  const genres = uniq([...state.books.map(x => x.genre), 'Romantasy', 'Fantasy', 'Romance', 'Thriller', 'Mystery', 'Horror', 'Science Fiction', 'Historical Fiction', 'Literary Fiction', 'Contemporary', 'Young Adult', 'Classics', 'Non-fiction', 'Memoir', 'Poetry', 'Graphic Novel']);
+  const seriesNames = uniq(state.books.map(x => x.series));
+  const dup = isNew ? findDuplicate(b) : null;
+
+  const body = openSheet(isNew ? 'Check the details' : 'Edit book', `
+    ${dup ? `<div class="note">You already own <b>${esc(dup.title)}</b> (${esc(dup.format)}). <button class="link-btn" id="openDup">Open it</button>${dup.format !== b.format ? ' (or set its format to Both)' : ''}.</div>` : ''}
+    ${isNew && (!b.series || b.seriesNum === '') ? `<div class="note" style="background:var(--card)">Lookups often miss series info. Add the series name and number below if it’s part of one.</div>` : ''}
+    <div class="edit-top" style="margin-top:12px">
+      <div id="coverPrev">${coverHTML(b, { badges: false })}</div>
+      <div class="cover-actions">
+        <button class="btn ghost" id="moreCovers" type="button">Choose another cover</button>
+        <label class="btn ghost" style="text-align:center">Upload my own<input type="file" accept="image/*" id="coverFile" hidden></label>
+        <button class="btn ghost" id="coverUrl" type="button">Paste image link</button>
+      </div>
+    </div>
+    <div id="coverPicker"></div>
+    <form id="editForm" autocomplete="off">
+      <label class="f">Title<input name="title" value="${esc(b.title)}" required></label>
+      <label class="f">Author<input name="author" value="${esc(b.author)}"></label>
+      <div class="grid3">
+        <label class="f">Series<input name="series" value="${esc(b.series)}" list="seriesList" placeholder="e.g. Throne of Glass"></label>
+        <label class="f">Book #<input name="seriesNum" value="${esc(b.seriesNum)}" inputmode="decimal"></label>
+        <label class="f">of<input name="seriesTotal" value="${esc(b.seriesTotal)}" inputmode="numeric" placeholder="total"></label>
+      </div>
+      <div id="seriesHints"></div>
+      <datalist id="seriesList">${seriesNames.map(s => `<option value="${esc(s)}">`).join('')}</datalist>
+      <label class="f">Format</label>
+      <div class="seg" data-field="format">${['Physical', 'Kindle', 'Both'].map(v => `<button type="button" data-v="${v}" class="${b.format === v ? 'on' : ''}">${v}</button>`).join('')}</div>
+      <label class="f">Status</label>
+      <div class="seg status" data-field="status">${['Unread', 'Reading', 'Read'].map(v => `<button type="button" data-v="${v}" class="${b.status === v ? 'on' : ''}">${v}</button>`).join('')}</div>
+      <div class="grid2">
+        <label class="f">Genre<input name="genre" value="${esc(b.genre)}" list="genreList"></label>
+        <label class="f">Year<input name="year" value="${esc(b.year)}" inputmode="numeric"></label>
+      </div>
+      <datalist id="genreList">${genres.map(g => `<option value="${esc(g)}">`).join('')}</datalist>
+      <label class="f">ISBN<input name="isbn" value="${esc(b.isbn)}" inputmode="numeric"></label>
+      <label class="f">Synopsis (spoiler-free; trim anything that gives too much away)<textarea name="synopsis">${esc(b.synopsis)}</textarea></label>
+      <div class="save-bar"><button class="btn ghost" type="button" data-close>Cancel</button><button class="btn" type="submit">${isNew ? 'Add to my shelf' : 'Save changes'}</button></div>
+    </form>
+  `);
+
+  const form = $('#editForm', body);
+  const updatePreview = () => { $('#coverPrev', body).innerHTML = coverHTML({ ...b, title: form.title.value, author: form.author.value }, { badges: false }); };
+  $$('.seg[data-field]', body).forEach(seg => seg.addEventListener('click', e => {
+    const btn = e.target.closest('button'); if (!btn) return;
+    b[seg.dataset.field] = btn.dataset.v;
+    $$('button', seg).forEach(x => x.classList.toggle('on', x === btn));
+  }));
+  if (dup) $('#openDup', body).onclick = () => openDetail(dup.id);
+
+  const picker = $('#coverPicker', body);
+  function showCoverGrid(list) {
+    if (!list.length) { picker.innerHTML = `<p class="status-msg">No other covers found. Try uploading a photo.</p>`; return; }
+    picker.innerHTML = `<div class="cover-grid">${list.map(u => `<button type="button" data-u="${esc(u)}" class="${u === b.cover ? 'on' : ''}"><img src="${esc(u)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.remove()" alt=""></button>`).join('')}</div>`;
+    $$('[data-u]', picker).forEach(btn => btn.onclick = () => {
+      b.cover = btn.dataset.u; updatePreview();
+      $$('[data-u]', picker).forEach(x => x.classList.toggle('on', x === btn));
+    });
+  }
+  $('#moreCovers', body).onclick = async () => {
+    picker.innerHTML = `<div class="status-msg"><div class="spinner"></div>Finding covers…</div>`;
+    const found = await findOtherCovers(form.title.value, form.author.value).catch(() => []);
+    coverOptions = uniq([...coverOptions, ...found]);
+    showCoverGrid(coverOptions);
+  };
+  $('#coverFile', body).onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try { b.cover = await fileToCover(f); updatePreview(); picker.innerHTML = ''; toast('Cover updated'); }
+    catch (err) { toast(err.message); }
+  };
+  $('#coverUrl', body).onclick = () => {
+    picker.innerHTML = `<div class="inline-form"><input class="inp" id="urlIn" placeholder="https://…jpg"><button class="btn" type="button" id="urlOk">Use</button></div>`;
+    $('#urlOk', picker).onclick = () => { const u = $('#urlIn', picker).value.trim(); if (/^https?:\/\//.test(u)) { b.cover = u; updatePreview(); picker.innerHTML = ''; } else toast('Paste a link starting with https://'); };
+  };
+  form.title.addEventListener('input', updatePreview);
+
+  // One-tap series suggestions: series by the same author already on your shelf.
+  function seriesHints() {
+    const box = $('#seriesHints', body);
+    const a = norm(String(form.author.value).split(',')[0]);
+    const groups = [...seriesGroups(state.books).values()].filter(g => a && g.books.some(x => x.id !== b.id && norm(String(x.author).split(',')[0]) === a));
+    const needsNum = form.series.value && !form.seriesNum.value;
+    const cur = groups.find(g => seriesKey(g.name) === seriesKey(form.series.value));
+    let html = '';
+    if (!form.series.value && groups.length) {
+      html = `<div class="pills" style="margin-top:6px">${groups.map(g => `<button type="button" class="pill" data-s="${esc(g.name)}" style="border:0">+ ${esc(g.name)}</button>`).join('')}</div>`;
+    } else if (needsNum && cur) {
+      const owned = new Set(cur.books.filter(x => x.id !== b.id).map(x => Math.floor(Number(x.seriesNum))));
+      const end = cur.total || Math.max(0, ...[...owned].filter(n => !isNaN(n))) + 1;
+      const nums = []; for (let n = 1; n <= end; n++) if (!owned.has(n)) nums.push(n);
+      html = `<div class="pills" style="margin-top:6px"><span class="pill" style="background:none">Book #?</span>${nums.map(n => `<button type="button" class="pill" data-n="${n}" style="border:0">${n}</button>`).join('')}</div>`;
+    }
+    box.innerHTML = html;
+    $$('[data-s]', box).forEach(x => x.onclick = () => {
+      form.series.value = x.dataset.s;
+      const g = groups.find(g => g.name === x.dataset.s);
+      if (g && g.total && !form.seriesTotal.value) form.seriesTotal.value = g.total;
+      seriesHints();
+    });
+    $$('[data-n]', box).forEach(x => x.onclick = () => { form.seriesNum.value = x.dataset.n; seriesHints(); });
+  }
+  ['series', 'seriesNum', 'author'].forEach(n => form[n].addEventListener('input', seriesHints));
+  seriesHints();
+
+  form.onsubmit = e => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const num = v => { const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? null : n; };
+    const book = {
+      ...b,
+      title: fd.get('title').trim(), author: fd.get('author').trim(), series: fd.get('series').trim(),
+      seriesNum: num(fd.get('seriesNum')), seriesTotal: num(fd.get('seriesTotal')),
+      genre: fd.get('genre').trim(), year: fd.get('year').trim(), isbn: fd.get('isbn').replace(/[^0-9Xx]/g, ''),
+      synopsis: fd.get('synopsis').trim(), updatedAt: Date.now(),
+    };
+    if (!book.title) return toast('Give it a title first');
+    store.save(book);
+    // Keep the series total in sync across the series.
+    if (book.series && book.seriesTotal) state.books
+      .filter(x => x.id !== book.id && seriesKey(x.series) === seriesKey(book.series) && x.seriesTotal !== book.seriesTotal)
+      .forEach(x => store.save({ ...x, seriesTotal: book.seriesTotal, updatedAt: Date.now() }));
+    closeSheet();
+    toast(isNew ? `Added “${book.title}” to your shelf` : 'Saved');
+  };
+}
+
+/* ═════════════ Book detail ═════════════ */
+function openDetail(id) {
+  const b = state.books.find(x => x.id === id);
+  if (!b) return;
+  const g = b.series ? seriesGroups(state.books).get(seriesKey(b.series)) : null;
+  const sg = `https://app.thestorygraph.com/browse?search_term=${encodeURIComponent(`${b.title} ${String(b.author).split(',')[0]}`).replace(/%20/g, '+')}`;
+  const pos = b.series
+    ? `${b.seriesNum != null && b.seriesNum !== '' ? `Book ${b.seriesNum}${b.seriesTotal ? ` of ${b.seriesTotal}` : ''} in ` : 'Part of '}<b>${esc(b.series)}</b>`
+    : '';
+  const body = openSheet('Book', `
+    <div class="detail-hero">
+      ${coverHTML(b, { badges: false })}
+      <h2>${esc(b.title)}</h2>
+      <div class="by">${esc(b.author)}</div>
+      ${pos ? `<div class="ser">${pos}</div>` : ''}
+      <div class="facts">
+        <span class="pill ${b.format !== 'Physical' ? 'kindle' : ''}">${b.format === 'Both' ? 'Physical + Kindle' : esc(b.format)}</span>
+        ${b.genre ? `<span class="pill">${esc(b.genre)}</span>` : ''}
+        ${b.year ? `<span class="pill">${esc(b.year)}</span>` : ''}
+        ${b.isbn ? `<span class="pill">ISBN ${esc(b.isbn)}</span>` : ''}
+      </div>
+    </div>
+    <div class="seg status" id="stSeg">${['Unread', 'Reading', 'Read'].map(v => `<button data-v="${v}" class="${(b.status || 'Unread') === v ? 'on' : ''}">${v}</button>`).join('')}</div>
+    ${b.synopsis ? `<h4>Synopsis</h4><div class="synopsis clamp" id="syn">${esc(b.synopsis)}</div><button class="link-btn" id="synMore">Read more</button>` : ''}
+    ${g && g.books.length > 1 ? `<h4>From this series on your shelf</h4><div class="mini-row">${seriesSlots(g).map(s => s.missing
+      ? `<div class="sslot"><div class="missing">${s.n}</div><div class="num">Missing</div></div>`
+      : `<div class="sslot"><button data-open="${s.b.id}" ${s.b.id === b.id ? 'style="outline:2px solid var(--accent);outline-offset:2px;border-radius:4px"' : ''}>${coverHTML(s.b)}</button><div class="num">#${esc(s.n)}</div></div>`).join('')}</div>` : ''}
+    <div class="detail-actions">
+      <a class="btn wide" href="${sg}" target="_blank" rel="noopener">Find on StoryGraph ↗</a>
+      <button class="btn ghost" id="editB">Edit</button>
+      <button class="btn danger" id="delB">Remove</button>
+    </div>
+  `);
+  $$('#stSeg button', body).forEach(btn => btn.onclick = () => {
+    store.save({ ...b, status: btn.dataset.v, updatedAt: Date.now() });
+    b.status = btn.dataset.v;
+    $$('#stSeg button', body).forEach(x => x.classList.toggle('on', x === btn));
+    toast(`Marked as ${btn.dataset.v}`);
+  });
+  const more = $('#synMore', body);
+  if (more) {
+    const syn = $('#syn', body);
+    requestAnimationFrame(() => { if (syn.scrollHeight <= syn.clientHeight + 2) more.remove(); });
+    more.onclick = () => { syn.classList.remove('clamp'); more.remove(); };
+  }
+  $$('[data-open]', body).forEach(x => x.onclick = () => { if (x.dataset.open !== id) openDetail(x.dataset.open); });
+  $('#editB', body).onclick = () => openEdit(b);
+  $('#delB', body).onclick = () => {
+    if (confirm(`Remove “${b.title}” from your shelf?`)) { store.remove(b.id); closeSheet(); toast('Removed'); }
+  };
+}
+
+/* ═════════════ Pick from my TBR ═════════════ */
+function openTBR() {
+  const pool = state.books.filter(b => (b.status || 'Unread') === 'Unread');
+  if (!pool.length) return toast(state.books.length ? 'No unread books. You’ve read everything you own!' : 'Add some books first');
+  const body = openSheet('Pick from my TBR', `<div class="tbr-stage"><div id="tbrCover" style="width:170px"></div><h3 id="tbrT"></h3><div class="by" id="tbrA" style="color:var(--muted)"></div><div id="tbrS" style="font-style:italic;font-size:.9rem;margin-top:2px"></div></div>
+    <div class="detail-actions" id="tbrActs" style="visibility:hidden">
+      <button class="btn wide" id="tbrStart">Start reading</button>
+      <button class="btn ghost" id="tbrAgain">Pick again</button>
+      <button class="btn ghost" id="tbrOpen">Open book</button>
+    </div>`);
+  let chosen, timer;
+  const show = b => {
+    $('#tbrCover', body).innerHTML = coverHTML(b, { badges: false });
+    $('#tbrT', body).textContent = b.title; $('#tbrA', body).textContent = b.author; $('#tbrS', body).textContent = seriesLabel(b);
+  };
+  function spin() {
+    clearInterval(timer);
+    $('#tbrActs', body).style.visibility = 'hidden';
+    chosen = pool[Math.floor(Math.random() * pool.length)];
+    if (pool.length === 1) { show(chosen); $('#tbrActs', body).style.visibility = 'visible'; return; }
+    let i = 0; const steps = 14;
+    timer = setInterval(() => {
+      show(i < steps ? pool[Math.floor(Math.random() * pool.length)] : chosen);
+      $('#tbrCover .cover', body).classList.toggle('spin', i < steps);
+      if (i++ >= steps) { clearInterval(timer); $('#tbrActs', body).style.visibility = 'visible'; }
+    }, 70 + i * 4);
+  }
+  $('#tbrAgain', body).onclick = spin;
+  $('#tbrOpen', body).onclick = () => openDetail(chosen.id);
+  $('#tbrStart', body).onclick = () => { store.save({ ...chosen, status: 'Reading', updatedAt: Date.now() }); closeSheet(); toast(`Enjoy “${chosen.title}”!`); };
+  spin();
+}
+
+/* ═════════════ Menu: backup, display mode, theme, sign out ═════════════ */
+function openMenu() {
+  const theme = lsGet('bookshelf.theme', 'auto');
+  const body = openSheet('Menu', `
+    <div class="menu-list">
+      <button class="btn ghost" id="mDisplay">📸 Display mode (hide buttons for photos)</button>
+      <button class="btn ghost" id="mExport">⬇️ Download a backup of my books</button>
+      <label class="btn ghost">⬆️ Restore from a backup file<input type="file" accept="application/json,.json" id="mImport" hidden></label>
+      <div style="margin-top:6px"><label class="f" style="margin:0 0 6px">Appearance</label>
+        <div class="seg" id="mTheme">${[['auto', 'Match phone'], ['light', 'Light'], ['dark', 'Dark']].map(([v, l]) => `<button data-v="${v}" class="${theme === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+      </div>
+      ${hasFirebase ? `<button class="btn ghost" id="mOut" style="margin-top:6px">Sign out</button>` : ''}
+      <p style="color:var(--muted);font-size:.82rem;text-align:center;margin:8px 0 0">${hasFirebase ? 'Syncing between your devices.' : 'Saving on this device only. See SETUP.md to turn on syncing.'}</p>
+    </div>`);
+  $('#mDisplay', body).onclick = () => { closeSheet(); setDisplayMode(true); };
+  $('#mExport', body).onclick = () => {
+    const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), books: state.books }, null, 1)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = `my-bookshelf-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
+  $('#mImport', body).onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      const data = JSON.parse(await f.text());
+      const books = Array.isArray(data) ? data : data.books;
+      if (!Array.isArray(books)) throw new Error();
+      if (!confirm(`Restore ${books.length} books? Books with the same ID will be overwritten; nothing else is deleted.`)) return;
+      books.forEach(b => b && b.id && b.title && store.save(b));
+      closeSheet(); toast(`Restored ${books.length} books`);
+    } catch { toast('That file isn’t a bookshelf backup'); }
+  };
+  $$('#mTheme button', body).forEach(btn => btn.onclick = () => {
+    lsSet('bookshelf.theme', btn.dataset.v); applyTheme();
+    $$('#mTheme button', body).forEach(x => x.classList.toggle('on', x === btn));
+  });
+  if ($('#mOut', body)) $('#mOut', body).onclick = () => { closeSheet(); store.signOut(); };
+}
+function applyTheme() {
+  const t = lsGet('bookshelf.theme', 'auto');
+  if (t === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', t);
+}
+function setDisplayMode(on) {
+  document.body.classList.toggle('display-mode', on);
+  $$('.exit-display').forEach(x => x.remove());
+  if (on) {
+    const x = document.createElement('button');
+    x.className = 'icon-btn exit-display'; x.textContent = 'Done'; x.onclick = () => setDisplayMode(false);
+    document.body.appendChild(x);
+    toast('Tap “Done” (top right) to exit', 2000);
+  }
+}
+
+/* ═════════════ Sign-in screen (only when syncing is set up) ═════════════ */
+function showLogin(fs) {
+  const root = $('#loginRoot');
+  root.innerHTML = `<div class="login"><form class="login-card" id="loginForm">
+    <div class="mini-shelf">${['#9c4a2f', '#c08a2e', '#4f7a4a', '#2f4f6e', '#7a4f2e', '#b0654a'].map((c, i) => `<i style="background:${c};height:${44 + (i * 7) % 22}px"></i>`).join('')}</div>
+    <h1>My Bookshelf</h1>
+    <p>Sign in to see your books.</p>
+    <input class="inp" type="email" name="email" placeholder="Email" autocomplete="username" required>
+    <input class="inp" type="password" name="password" placeholder="Password" autocomplete="current-password" required minlength="6">
+    <button class="btn block" type="submit">Sign in</button>
+    <div id="loginErr" class="note bad hidden"></div>
+    <div style="display:flex;justify-content:space-between;margin-top:10px">
+      <button class="link-btn" type="button" id="signUp">First time? Create account</button>
+      <button class="link-btn" type="button" id="forgot">Forgot password</button>
+    </div>
+  </form></div>`;
+  const form = $('#loginForm', root), err = $('#loginErr', root);
+  const msg = e => ({
+    'auth/invalid-credential': 'That email and password don’t match.',
+    'auth/wrong-password': 'That email and password don’t match.',
+    'auth/user-not-found': 'No account with that email yet. Tap “Create account”.',
+    'auth/email-already-in-use': 'There’s already an account with that email. Just sign in.',
+    'auth/weak-password': 'Password needs at least 6 characters.',
+    'auth/operation-not-allowed': 'Email sign-in isn’t switched on in Firebase yet (SETUP.md, Part 2).',
+    'auth/configuration-not-found': 'Email sign-in isn’t switched on in Firebase yet (SETUP.md, Part 2).',
+    'auth/too-many-requests': 'Too many tries. Wait a minute and try again.',
+  }[e.code] || e.message);
+  const fail = e => { err.textContent = msg(e); err.classList.remove('hidden'); };
+  form.onsubmit = e => { e.preventDefault(); err.classList.add('hidden'); fs.A.signInWithEmailAndPassword(fs.auth, form.email.value.trim(), form.password.value).catch(fail); };
+  $('#signUp', root).onclick = () => { if (!form.reportValidity()) return; fs.A.createUserWithEmailAndPassword(fs.auth, form.email.value.trim(), form.password.value).catch(fail); };
+  $('#forgot', root).onclick = () => {
+    if (!form.email.value) { fail({ message: 'Type your email above first.' }); return; }
+    fs.A.sendPasswordResetEmail(fs.auth, form.email.value.trim()).then(() => toast('Reset email sent')).catch(fail);
+  };
+}
+function hideLogin() { $('#loginRoot').innerHTML = ''; }
+
+/* ═════════════ Wiring ═════════════ */
+document.addEventListener('click', e => {
+  const o = e.target.closest('#view [data-open]');
+  if (o) openDetail(o.dataset.open);
+});
+$$('.tabs button').forEach(b => b.onclick = () => { state.view = b.dataset.view; lsSet('bookshelf.view', state.view); render(); scrollTo({ top: 0 }); });
+$('#q').addEventListener('input', e => { state.q = e.target.value; render(); });
+[['#fStatus', 'status'], ['#fFormat', 'format'], ['#fGenre', 'genre'], ['#fSort', 'sort']].forEach(([s, k]) =>
+  $(s).addEventListener('change', e => { state[k] = e.target.value; lsSet('bookshelf.f' + k[0].toUpperCase() + k.slice(1), state[k]); render(); }));
+function clearFilters() { state.q = ''; $('#q').value = ''; ['status', 'format', 'genre'].forEach(k => { state[k] = ''; lsSet('bookshelf.f' + k[0].toUpperCase() + k.slice(1), ''); }); render(); }
+$('#addBtn').onclick = () => openAdd();
+$('#tbrBtn').onclick = openTBR;
+$('#menuBtn').onclick = openMenu;
+
+applyTheme();
+render();
+store.start(books => { state.books = books; render(); }).catch(e => {
+  toast('Couldn’t connect to Firebase. Check firebase-config.js (' + e.message + ')', 6000);
+});
+
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
