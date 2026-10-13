@@ -11,10 +11,10 @@
 // ─────────────────────────────────────────────────────────────
 
 export const firebaseConfig = {
-  apiKey: "PASTE-HERE",
-  authDomain: "PASTE-HERE",
-  projectId: "PASTE-HERE",
-  storageBucket: "PASTE-HERE",
-  messagingSenderId: "PASTE-HERE",
-  appId: "PASTE-HERE"
+  apiKey: "AIzaSyC877n-86F1IAnHdczlOtIV4VJaU1VJ53U",
+  authDomain: "my-bookshelf-57d69.firebaseapp.com",
+  projectId: "my-bookshelf-57d69",
+  storageBucket: "my-bookshelf-57d69.firebasestorage.app",
+  messagingSenderId: "188874806133",
+  appId: "1:188874806133:web:7afa8167f2df81a626f93c"
 };
