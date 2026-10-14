@@ -111,6 +111,12 @@ a { color: var(--accent); }
   background-position: calc(100% - 14px) 52%, calc(100% - 9px) 52%; background-size: 5px 5px; background-repeat: no-repeat;
 }
 .chips select.on { border-color: var(--accent); color: var(--accent); }
+.chip-toggle { flex: none; border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 6px 12px; font-size: .84rem; font-weight: 600; }
+.chip-toggle::before { content: "○ "; }
+.chip-toggle[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.chip-toggle[aria-pressed="true"]::before { content: "● "; }
+.list-group-h { grid-column: 1 / -1; font-family: var(--serif); font-weight: 600; font-size: 1.02rem; margin: 8px 2px -2px; }
+.list-group-h span { font-family: var(--sans); font-weight: 400; font-size: .82rem; color: var(--muted); }
 
 main { max-width: 1100px; margin: 0 auto; padding: 16px; }
 .empty { text-align: center; color: var(--muted); padding: 48px 16px; }
@@ -255,6 +261,19 @@ label.f { display: block; margin-top: 12px; font-size: .8rem; font-weight: 700; 
 }
 .f input:focus, .f textarea:focus, .inp:focus { border-color: var(--accent); }
 .f textarea { min-height: 140px; resize: vertical; line-height: 1.45; }
+.combo { position: relative; display: block; }
+.combo input { padding-right: 40px !important; }
+.combo-btn { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); margin-top: 2px; border: 0; background: none; width: 38px; height: 38px; font-size: 1rem; color: var(--muted); }
+.pick-list { margin-top: 6px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; max-height: 260px; overflow-y: auto; box-shadow: var(--shadow); }
+.pick-list button { display: flex; flex-direction: column; align-items: flex-start; width: 100%; border: 0; border-bottom: 1px solid var(--line); background: none; padding: 10px 12px; text-align: left; }
+.pick-list button:last-child { border-bottom: 0; }
+.pick-list b { font-family: var(--serif); font-weight: 600; }
+.pick-list span { font-size: .8rem; color: var(--muted); }
+.pick-empty { padding: 10px 12px; color: var(--muted); font-size: .88rem; }
+.gpick { gap: 6px; margin-top: 6px; }
+.gpick .pill { border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: .84rem; padding: 6px 11px; font-weight: 600; }
+.gpick .pill.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.gpick .pill.add { border-style: dashed; color: var(--muted); }
 .grid3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
@@ -363,6 +382,7 @@ body.display-mode main { padding-top: calc(20px + env(safe-area-inset-top)); }
       <select id="fFormat" aria-label="Format"><option value="">All formats</option><option value="Physical">Physical</option><option value="Kindle">Kindle</option><option value="Both">Physical &amp; Kindle</option></select>
       <select id="fGenre" aria-label="Genre"><option value="">All genres</option></select>
       <select id="fSort" aria-label="Sort"><option value="recent">Recently added</option><option value="title">Title</option><option value="author">Author</option><option value="series">Series order</option></select>
+      <button type="button" class="chip-toggle" id="fGroup" aria-pressed="true">Series together</button>
     </div>
   </div>
 </header>
@@ -382,7 +402,9 @@ body.display-mode main { padding-top: calc(20px + env(safe-area-inset-top)); }
 <div id="loginRoot"></div>
 
 <script type="module">
-import { firebaseConfig } from './firebase-config.js';
+import * as config from './firebase-config.js';
+const firebaseConfig = config.firebaseConfig;
+const GBOOKS_KEY = (config.googleBooksKey || '').trim();
 
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2';
 const SCANNER_SRC = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
@@ -412,13 +434,29 @@ async function getJSON(url) {
   return r.json();
 }
 
+// Google Books: uses your own key if you added one (SETUP.md 2f). If Google
+// refuses (daily allowance used up), we skip it for a while and rely on Open Library.
+let gbooksPausedUntil = 0;
+async function gbooks(pathAndQuery) {
+  if (Date.now() < gbooksPausedUntil) throw new Error('Google Books paused');
+  const url = 'https://www.googleapis.com/books/v1/' + pathAndQuery;
+  const withKey = GBOOKS_KEY ? url + (url.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(GBOOKS_KEY) : url;
+  try {
+    return await getJSON(withKey);
+  } catch (e) {
+    if (GBOOKS_KEY && /HTTP 40[03]/.test(e.message)) { try { return await getJSON(url); } catch {} }
+    if (/HTTP 429|HTTP 403/.test(e.message)) gbooksPausedUntil = Date.now() + 10 * 60 * 1000;
+    throw e;
+  }
+}
+
 /* ═════════════ Storage: local (this device) or Firebase (synced) ═════════════ */
 const hasFirebase = firebaseConfig && firebaseConfig.apiKey && !String(firebaseConfig.apiKey).includes('PASTE');
 
 class LocalStore {
   constructor() { this.key = 'bookshelf.books.v1'; this.books = lsGet(this.key, []); }
-  async start(onChange) { this.onChange = onChange; onChange(this.books); }
-  persist() { lsSet(this.key, this.books); this.onChange(this.books); }
+  async start(onChange) { this.onChange = onChange; onChange(this.books, true); }
+  persist() { lsSet(this.key, this.books); this.onChange([...this.books], true); }
   async save(b) { const i = this.books.findIndex(x => x.id === b.id); if (i >= 0) this.books[i] = b; else this.books.push(b); this.persist(); }
   async remove(id) { this.books = this.books.filter(b => b.id !== id); this.persist(); }
   signOut() {}
@@ -437,11 +475,11 @@ class FirebaseStore {
     } catch { this.db = F.getFirestore(app); }
     A.onAuthStateChanged(this.auth, user => {
       if (this.unsub) { this.unsub(); this.unsub = null; }
-      if (!user) { onChange([]); showLogin(this); return; }
+      if (!user) { onChange([], false); showLogin(this); return; }
       hideLogin();
       this.col = F.collection(this.db, 'users', user.uid, 'books');
       this.unsub = F.onSnapshot(this.col,
-        snap => onChange(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+        snap => onChange(snap.docs.map(d => ({ id: d.id, ...d.data() })), !snap.metadata.fromCache || snap.docs.length > 0),
         err => toast('Sync problem: ' + (err.code || err.message) + ' (see SETUP.md, Part 2)', 6000));
     });
   }
@@ -462,6 +500,7 @@ const state = {
   format: lsGet('bookshelf.fFormat', ''),
   genre: lsGet('bookshelf.fGenre', ''),
   sort: lsGet('bookshelf.fSort', 'recent'),
+  groupSeries: lsGet('bookshelf.groupSeries', true),
 };
 const store = hasFirebase ? new FirebaseStore() : new LocalStore();
 if (!hasFirebase) $('#localBanner').classList.remove('hidden');
@@ -493,7 +532,7 @@ function filtered() {
     (!q || norm(`${b.title} ${b.author} ${b.series}`).includes(q)) &&
     (!state.status || (b.status || 'Unread') === state.status) &&
     (!state.format || b.format === state.format || (state.format !== 'Both' && b.format === 'Both')) &&
-    (!state.genre || (b.genre || '') === state.genre)
+    (!state.genre || splitGenres(b.genre).includes(state.genre))
   );
   const by = {
     recent: (a, b) => (b.addedAt || 0) - (a.addedAt || 0),
@@ -501,15 +540,32 @@ function filtered() {
     author: (a, b) => authorLast(a.author).localeCompare(authorLast(b.author)) || seriesCmp(a, b),
     series: seriesCmp,
   }[state.sort] || ((a, b) => 0);
-  return list.sort(by);
+  list.sort(by);
+  return state.groupSeries && state.sort !== 'series' ? keepSeriesTogether(list) : list;
 }
+const seriesNo = b => (b.seriesNum === '' || b.seriesNum == null || isNaN(b.seriesNum)) ? 999 : Number(b.seriesNum);
 function seriesCmp(a, b) {
   const sa = seriesKey(a.series), sb = seriesKey(b.series);
   if (sa && !sb) return -1;
   if (!sa && sb) return 1;
   if (sa !== sb) return sa.localeCompare(sb);
-  if (sa) return (a.seriesNum ?? 999) - (b.seriesNum ?? 999);
+  if (sa) return seriesNo(a) - seriesNo(b);
   return sortTitle(a.title).localeCompare(sortTitle(b.title));
+}
+// Books from the same series sit side by side, in series order, at the spot where
+// the first of them would appear in your chosen sort.
+function keepSeriesTogether(list) {
+  const bySeries = new Map();
+  list.forEach(b => { const k = seriesKey(b.series); if (k) { if (!bySeries.has(k)) bySeries.set(k, []); bySeries.get(k).push(b); } });
+  const out = [], placed = new Set();
+  for (const b of list) {
+    const k = seriesKey(b.series);
+    if (!k) { out.push(b); continue; }
+    if (placed.has(k)) continue;
+    placed.add(k);
+    out.push(...bySeries.get(k).sort((x, y) => seriesNo(x) - seriesNo(y) || sortTitle(x.title).localeCompare(sortTitle(y.title))));
+  }
+  return out;
 }
 
 /* ═════════════ Rendering ═════════════ */
@@ -523,12 +579,14 @@ function render() {
   $$('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.view === state.view)));
 
   // genre options from your own books
-  const genres = [...new Set(books.map(b => b.genre).filter(Boolean))].sort();
+  const genres = uniq(books.flatMap(b => splitGenres(b.genre))).sort();
   const gSel = $('#fGenre');
   gSel.innerHTML = `<option value="">All genres</option>` + genres.map(g => `<option ${g === state.genre ? 'selected' : ''}>${esc(g)}</option>`).join('');
   $('#fStatus').value = state.status; $('#fFormat').value = state.format; $('#fSort').value = state.sort;
   ['#fStatus', '#fFormat', '#fGenre'].forEach(s => $(s).classList.toggle('on', !!$(s).value));
   $('#fSort').classList.toggle('on', state.sort !== 'recent');
+  $('#fGroup').setAttribute('aria-pressed', String(state.groupSeries || state.sort === 'series'));
+  $('#fGroup').classList.toggle('hidden', state.view === 'series');
 
   const v = $('#view');
   if (!books.length) {
@@ -561,7 +619,16 @@ function seriesLabel(b) {
 }
 
 function renderList(list) {
-  return `<div class="list">${list.map(b => `
+  const grouping = state.groupSeries || state.sort === 'series';
+  const counts = new Map();
+  list.forEach(b => { const k = seriesKey(b.series); if (k) counts.set(k, (counts.get(k) || 0) + 1); });
+  let prevKey = '';
+  return `<div class="list">${list.map(b => {
+    const k = seriesKey(b.series);
+    const header = grouping && k && k !== prevKey && counts.get(k) > 1
+      ? `<div class="list-group-h">${esc(b.series)} <span>· ${counts.get(k)} on your shelf</span></div>` : '';
+    prevKey = k;
+    return header + `
     <button class="row" data-open="${b.id}">
       ${coverHTML(b, { badges: false })}
       <div class="meta">
@@ -571,10 +638,11 @@ function renderList(list) {
         <div class="pills">
           ${b.status && b.status !== 'Unread' ? `<span class="pill ${b.status.toLowerCase()}">${b.status}</span>` : `<span class="pill">Unread</span>`}
           ${b.format && b.format !== 'Physical' ? `<span class="pill kindle">${b.format === 'Both' ? 'Physical + Kindle' : 'Kindle'}</span>` : ''}
-          ${b.genre ? `<span class="pill">${esc(b.genre)}</span>` : ''}
+          ${splitGenres(b.genre).map(g => `<span class="pill">${esc(g)}</span>`).join('')}
         </div>
       </div>
-    </button>`).join('')}</div>`;
+    </button>`;
+  }).join('')}</div>`;
 }
 
 function seriesGroups(allBooks) {
@@ -705,6 +773,9 @@ function splitSeriesFromTitle(title, subtitle) {
   return { title: t, series, num };
 }
 
+// A book can have several genres, saved as "Fantasy, Romance" (older single-genre books just work).
+const splitGenres = s => uniq(String(s || '').split(',').map(g => g.trim()));
+
 function guessGenre(tags) {
   const t = tags.join(' | ').toLowerCase();
   if (!t) return '';
@@ -750,10 +821,10 @@ function fromGoogle(item) {
 }
 
 async function googleByIsbn(isbn) {
-  const d = await getJSON(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
+  const d = await gbooks(`volumes?q=isbn:${isbn}`);
   if (!d.items || !d.items.length) return null;
   let item = d.items[0];
-  try { item = await getJSON(`https://www.googleapis.com/books/v1/volumes/${item.id}`); } catch {}
+  try { item = await gbooks(`volumes/${item.id}`); } catch {}
   return fromGoogle(item);
 }
 
@@ -825,7 +896,7 @@ async function lookupIsbn(raw) {
 
 async function searchBooks(q) {
   const [g, o] = await Promise.allSettled([
-    getJSON(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=15&printType=books`),
+    gbooks(`volumes?q=${encodeURIComponent(q)}&maxResults=15&printType=books`),
     getJSON(`https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=15&fields=key,title,author_name,first_publish_year,cover_i,isbn,subject`),
   ]);
   const G = g.status === 'fulfilled' ? (g.value.items || []).map(fromGoogle) : [];
@@ -865,7 +936,7 @@ async function findOtherCovers(title, author) {
   const q = `${title} ${String(author || '').split(',')[0]}`.trim();
   const covers = [];
   const [g, o] = await Promise.allSettled([
-    getJSON(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=20&printType=books`),
+    gbooks(`volumes?q=${encodeURIComponent(q)}&maxResults=20&printType=books`),
     getJSON(`https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=5&fields=key,cover_i`),
   ]);
   if (o.status === 'fulfilled') {
@@ -882,14 +953,28 @@ async function findOtherCovers(title, author) {
   return uniq(covers).slice(0, 48);
 }
 
+// Amazon link titles often have extra words ("Iron Flame Empyrean Rebecca Yarros") that
+// stop Open Library matching, so retry with fewer words if nothing comes back.
+async function searchLoose(q) {
+  const words = q.split(/\s+/).filter(Boolean);
+  const tries = [q];
+  if (words.length > 4) tries.push([...words.slice(0, 3), ...words.slice(-2)].join(' '), words.slice(0, 3).join(' '));
+  for (const t of tries) {
+    const list = await searchBooks(t).catch(() => []);
+    if (list.length) return list;
+  }
+  return [];
+}
+
 function parseAmazon(url) {
   const s = String(url || '').trim();
-  const m = s.match(/(?:\/dp\/|\/gp\/product\/|\/gp\/aw\/d\/|\/ASIN\/|\/d\/)([A-Z0-9]{10})(?:[/?]|$)/i);
+  const m = s.match(/(?:\/dp\/|\/gp\/product\/|\/gp\/aw\/d\/|\/ASIN\/)([A-Z0-9]{10})(?:[/?#&]|$)/i) || s.match(/[?&]asin=([A-Z0-9]{10})/i);
   const asin = m ? m[1].toUpperCase() : '';
-  const slugM = s.match(/amazon\.[^/]+\/([^/?]+)\/(?:dp|gp)\//i);
+  // e.g. amazon.co.uk/Iron-Flame-Empyrean-Rebecca-Yarros-ebook/dp/… or amazon.com/-/en/Iron-Flame/dp/…
+  const slugM = s.match(/amazon\.[^/]+\/(?:-\/[a-z]{2}\/)?([^/?]+)\/(?:dp|gp)\//i);
   const slug = slugM ? decodeURIComponent(slugM[1]).replace(/-/g, ' ')
     .replace(/\b(kindle edition|ebook|e book|paperback|hardcover|audible audiobook|kindle)\b/ig, '').replace(/\s+/g, ' ').trim() : '';
-  const short = /(amzn\.(?:to|eu|asia)|a\.co)\//i.test(s) && !asin;
+  const short = /(amzn\.(?:to|eu|asia)|a\.co)\//i.test(s);
   return {
     asin, slug, short,
     isbn: /^\d{9}[\dX]$/.test(asin) ? asin : null,
@@ -959,19 +1044,28 @@ function openAdd(tab = isTouch ? 'scan' : 'search') {
       $('#searchForm', pane).onsubmit = e => { e.preventDefault(); const v = inp.value.trim(); if (!v) return; if (normIsbn(v) && /^[\d\s-xX]+$/.test(v)) handleIsbn(v); else runSearch(v, $('#results', pane)); };
     } else {
       pane.innerHTML = `
-        <p style="margin:0 0 8px;color:var(--muted);font-size:.9rem">Paste a link to the book on Amazon (Kindle or paperback). Tip: on the Amazon website, copy the full address from the address bar.</p>
+        <p style="margin:0 0 8px;color:var(--muted);font-size:.9rem">Paste a link to the book on Amazon (Kindle or paperback).</p>
         <textarea class="inp" id="linkIn" rows="3" placeholder="https://www.amazon.co.uk/…/dp/…"></textarea>
         <button class="btn block" id="linkGo" style="margin-top:8px">Find this book</button>
-        <div class="results" id="results"></div>`;
+        <div class="results" id="results"></div>
+        <div class="note" style="background:var(--card)">On a laptop? The <b>Send to My Bookshelf</b> button is quicker and more reliable, and it works on your whole Kindle Cloud Reader library. <button class="link-btn" id="toKindle">Set it up</button></div>`;
+      $('#toKindle', pane).onclick = () => openKindleHelp();
       $('#linkGo', pane).onclick = () => {
         const p = parseAmazon($('#linkIn', pane).value);
         const out = $('#results', pane);
         const defaults = p.isKindle ? { format: 'Kindle' } : {};
         if (p.isbn) return handleIsbn(p.isbn, defaults);
         if (p.slug) { $('#linkIn', pane).blur(); return runSearch(p.slug, out, defaults); }
-        out.innerHTML = `<div class="note bad">${p.short
-          ? 'Short share links (like a.co/… or amzn.eu/…) can’t be read. Open the link in your browser, then copy the full address from the address bar and paste that instead.'
-          : 'I couldn’t read a book from that link. Try the Search tab with the title instead.'}</div>`;
+        // The link only has Amazon's own code (no title), which the free book databases can't look up.
+        out.innerHTML = `<div class="note">${p.short
+          ? 'Short share links (like a.co/… or amzn.eu/…) don’t include the book’s name.'
+          : 'This link only contains Amazon’s product code, not the book’s name, so the free book databases can’t look it up.'}
+          Type the title instead and I’ll keep it marked as ${defaults.format === 'Kindle' || p.short ? 'Kindle' : 'this format'}:</div>
+          <form class="inline-form" id="linkSearch"><input class="inp" id="linkQ" placeholder="Title (and author)"><button class="btn">Search</button></form>
+          <div class="results" id="linkResults"></div>`;
+        const d2 = p.short ? { format: 'Kindle' } : defaults;
+        $('#linkQ', out).focus();
+        $('#linkSearch', out).onsubmit = e => { e.preventDefault(); const q = $('#linkQ', out).value.trim(); if (q) runSearch(q, $('#linkResults', out), d2); };
       };
     }
   }
@@ -1002,7 +1096,7 @@ function openAdd(tab = isTouch ? 'scan' : 'search') {
   async function runSearch(q, out, defaults = {}) {
     out.innerHTML = `<div class="status-msg"><div class="spinner"></div>Searching…</div>`;
     let list = [];
-    try { list = await searchBooks(q); } catch {}
+    try { list = await searchLoose(q); } catch {}
     if (!list.length) { out.innerHTML = `<div class="status-msg">No books found. Try fewer words, or <button class="link-btn" id="manual2">add it by hand</button>.</div>`; $('#manual2', out).onclick = () => openEdit({ title: q, ...defaults }, { isNew: true }); return; }
     out.innerHTML = `<p style="margin:4px 0 0;color:var(--muted);font-size:.85rem">Tap the right one. You can check and edit everything next.</p>` + list.map((c, i) => `
       <button class="row" data-i="${i}">
@@ -1051,8 +1145,7 @@ function openEdit(data, { isNew = false } = {}) {
     if (ex) { b.series = ex.series; if (!b.seriesTotal && ex.seriesTotal) b.seriesTotal = ex.seriesTotal; }
   }
   let coverOptions = uniq([b.cover, ...(data.coverOptions || [])]);
-  const genres = uniq([...state.books.map(x => x.genre), 'Romantasy', 'Fantasy', 'Romance', 'Thriller', 'Mystery', 'Horror', 'Science Fiction', 'Historical Fiction', 'Literary Fiction', 'Contemporary', 'Young Adult', 'Classics', 'Non-fiction', 'Memoir', 'Poetry', 'Graphic Novel']);
-  const seriesNames = uniq(state.books.map(x => x.series));
+  let genres = uniq([...state.books.flatMap(x => splitGenres(x.genre)), 'Romantasy', 'Fantasy', 'Romance', 'Thriller', 'Mystery', 'Horror', 'Science Fiction', 'Historical Fiction', 'Literary Fiction', 'Contemporary', 'Young Adult', 'Classics', 'Non-fiction', 'Memoir', 'Poetry', 'Graphic Novel']);
   const dup = isNew ? findDuplicate(b) : null;
 
   const body = openSheet(isNew ? 'Check the details' : 'Edit book', `
@@ -1071,21 +1164,21 @@ function openEdit(data, { isNew = false } = {}) {
       <label class="f">Title<input name="title" value="${esc(b.title)}" required></label>
       <label class="f">Author<input name="author" value="${esc(b.author)}"></label>
       <div class="grid3">
-        <label class="f">Series<input name="series" value="${esc(b.series)}" list="seriesList" placeholder="e.g. Throne of Glass"></label>
+        <label class="f">Series<span class="combo"><input name="series" value="${esc(b.series)}" placeholder="Pick or type" autocomplete="off"><button type="button" class="combo-btn" id="seriesOpen" aria-label="Choose a series from my shelf">▾</button></span></label>
         <label class="f">Book #<input name="seriesNum" value="${esc(b.seriesNum)}" inputmode="decimal"></label>
         <label class="f">of<input name="seriesTotal" value="${esc(b.seriesTotal)}" inputmode="numeric" placeholder="total"></label>
       </div>
+      <div id="seriesPick" class="pick-list hidden"></div>
       <div id="seriesHints"></div>
-      <datalist id="seriesList">${seriesNames.map(s => `<option value="${esc(s)}">`).join('')}</datalist>
       <label class="f">Format</label>
       <div class="seg" data-field="format">${['Physical', 'Kindle', 'Both'].map(v => `<button type="button" data-v="${v}" class="${b.format === v ? 'on' : ''}">${v}</button>`).join('')}</div>
       <label class="f">Status</label>
       <div class="seg status" data-field="status">${['Unread', 'Reading', 'Read'].map(v => `<button type="button" data-v="${v}" class="${b.status === v ? 'on' : ''}">${v}</button>`).join('')}</div>
-      <div class="grid2">
-        <label class="f">Genre<input name="genre" value="${esc(b.genre)}" list="genreList"></label>
-        <label class="f">Year<input name="year" value="${esc(b.year)}" inputmode="numeric"></label>
-      </div>
-      <datalist id="genreList">${genres.map(g => `<option value="${esc(g)}">`).join('')}</datalist>
+      <label class="f">Genres <span style="font-weight:400">(tap all that fit)</span></label>
+      <input type="hidden" name="genre" value="${esc(b.genre)}">
+      <div class="pills gpick" id="genrePick"></div>
+      <div class="inline-form hidden" id="genreNewRow" style="margin-top:6px"><input class="inp" id="genreNew" placeholder="New genre, e.g. Cosy Fantasy"><button class="btn" type="button" id="genreAdd">Add</button></div>
+      <label class="f" style="max-width:50%">Year<input name="year" value="${esc(b.year)}" inputmode="numeric"></label>
       <label class="f">ISBN<input name="isbn" value="${esc(b.isbn)}" inputmode="numeric"></label>
       <label class="f">Synopsis (spoiler-free; trim anything that gives too much away)<textarea name="synopsis">${esc(b.synopsis)}</textarea></label>
       <div class="save-bar"><button class="btn ghost" type="button" data-close>Cancel</button><button class="btn" type="submit">${isNew ? 'Add to my shelf' : 'Save changes'}</button></div>
@@ -1155,6 +1248,63 @@ function openEdit(data, { isNew = false } = {}) {
   ['series', 'seriesNum', 'author'].forEach(n => form[n].addEventListener('input', seriesHints));
   seriesHints();
 
+  // Series picker: a tappable list of the series already on your shelf.
+  const pick = $('#seriesPick', body);
+  function showSeriesPick(all = false) {
+    const groups = [...seriesGroups(state.books).values()].sort((x, y) => sortTitle(x.name).localeCompare(sortTitle(y.name)));
+    const q = all ? '' : norm(form.series.value);
+    const list = groups.filter(g => !q || norm(g.name).includes(q) || norm(g.books[0].author).includes(q));
+    if (!groups.length) { pick.innerHTML = `<div class="pick-empty">No series on your shelf yet. Just type the name.</div>`; pick.classList.remove('hidden'); return; }
+    if (!list.length || (list.length === 1 && seriesKey(list[0].name) === seriesKey(form.series.value) && !all)) { pick.classList.add('hidden'); return; }
+    pick.innerHTML = list.map(g => `<button type="button" data-name="${esc(g.name)}">
+      <b>${esc(g.name)}</b><span>${esc(g.books[0].author || '')} · ${g.books.length} owned${g.total ? ` of ${g.total}` : ''}</span></button>`).join('')
+      + (form.series.value ? `<button type="button" data-clear><span>✕ Not part of a series</span></button>` : '');
+    pick.classList.remove('hidden');
+    $$('[data-name]', pick).forEach(x => x.onclick = () => {
+      const g = groups.find(g => g.name === x.dataset.name);
+      form.series.value = g.name;
+      if (!form.seriesTotal.value && g.total) form.seriesTotal.value = g.total;
+      if (!form.author.value && g.books[0].author) { form.author.value = g.books[0].author; updatePreview(); }
+      pick.classList.add('hidden');
+      seriesHints();
+    });
+    const clr = $('[data-clear]', pick);
+    if (clr) clr.onclick = () => { form.series.value = ''; form.seriesNum.value = ''; form.seriesTotal.value = ''; pick.classList.add('hidden'); seriesHints(); };
+  }
+  $('#seriesOpen', body).onclick = e => { e.preventDefault(); pick.classList.contains('hidden') ? showSeriesPick(true) : pick.classList.add('hidden'); };
+  form.series.addEventListener('input', () => showSeriesPick(false));
+  form.series.addEventListener('focus', () => { if (!form.series.value) showSeriesPick(true); });
+  body.addEventListener('click', e => { if (!e.target.closest('#seriesPick, .combo')) pick.classList.add('hidden'); });
+
+  // Genre picker: tap as many as fit.
+  let chosen = splitGenres(b.genre);
+  genres = uniq([...chosen, ...genres]);
+  function drawGenres() {
+    form.genre.value = chosen.join(', ');
+    $('#genrePick', body).innerHTML = genres.map(g => `<button type="button" class="pill ${chosen.includes(g) ? 'on' : ''}" data-g="${esc(g)}">${chosen.includes(g) ? '✓ ' : ''}${esc(g)}</button>`).join('')
+      + `<button type="button" class="pill add" id="genreMore">+ New genre</button>`;
+    $$('[data-g]', body).forEach(x => x.onclick = () => {
+      const g = x.dataset.g;
+      chosen = chosen.includes(g) ? chosen.filter(c => c !== g) : [...chosen, g];
+      drawGenres();
+    });
+    $('#genreMore', body).onclick = () => { $('#genreNewRow', body).classList.remove('hidden'); $('#genreNew', body).focus(); };
+  }
+  const addGenre = () => {
+    const v = $('#genreNew', body).value.trim().replace(/,/g, ' ');
+    if (!v) return;
+    const existing = genres.find(g => norm(g) === norm(v));
+    const g = existing || v;
+    if (!existing) genres = [g, ...genres];
+    if (!chosen.includes(g)) chosen.push(g);
+    $('#genreNew', body).value = '';
+    $('#genreNewRow', body).classList.add('hidden');
+    drawGenres();
+  };
+  $('#genreAdd', body).onclick = addGenre;
+  $('#genreNew', body).addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addGenre(); } });
+  drawGenres();
+
   form.onsubmit = e => {
     e.preventDefault();
     const fd = new FormData(form);
@@ -1194,7 +1344,7 @@ function openDetail(id) {
       ${pos ? `<div class="ser">${pos}</div>` : ''}
       <div class="facts">
         <span class="pill ${b.format !== 'Physical' ? 'kindle' : ''}">${b.format === 'Both' ? 'Physical + Kindle' : esc(b.format)}</span>
-        ${b.genre ? `<span class="pill">${esc(b.genre)}</span>` : ''}
+        ${splitGenres(b.genre).map(g => `<span class="pill">${esc(g)}</span>`).join('')}
         ${b.year ? `<span class="pill">${esc(b.year)}</span>` : ''}
         ${b.isbn ? `<span class="pill">ISBN ${esc(b.isbn)}</span>` : ''}
       </div>
@@ -1262,11 +1412,254 @@ function openTBR() {
   spin();
 }
 
+/* ═════════════ Kindle Cloud Reader & Amazon: "Send to My Bookshelf" button ═════════════ */
+// This function becomes a bookmark (a "bookmarklet"). It runs on Amazon's page in YOUR
+// browser, reads the book details you can already see, and opens your bookshelf with them.
+// Nothing is sent anywhere else.
+function sendToBookshelf(APP) {
+  if (!/(^|\.)amazon\./.test(location.hostname)) { alert('Open Kindle Cloud Reader (read.amazon…) or an Amazon book page, then click this bookmark.'); return; }
+  const win = window.open('about:blank', '_blank');
+  const go = items => {
+    const url = APP + '#kindle=' + encodeURIComponent(JSON.stringify(items));
+    if (win) win.location.href = url; else location.href = url;
+  };
+  const big = u => String(u || '').replace(/\._[^/]*?_\.(jpe?g|png)/i, '.$1');
+  const q = s => document.querySelector(s);
+  const fail = msg => { if (win) win.close(); alert(msg); };
+
+  // Kindle Cloud Reader (read.amazon.com / .co.uk / …): your whole Kindle library.
+  if (/^read\.amazon\./.test(location.hostname)) {
+    (async () => {
+      const items = [];
+      let token = '';
+      for (let page = 0; page < 60; page++) {
+        let j = null;
+        try {
+          const r = await fetch('/kindle-library/search?query=&libraryType=BOOKS&sortType=recency&querySize=50' + (token ? '&paginationToken=' + encodeURIComponent(token) : ''), { credentials: 'include' });
+          if (r.ok) j = await r.json();
+        } catch (e) {}
+        if (!j) break;
+        (j.itemsList || []).forEach(it => items.push({ a: it.asin, t: it.title, w: it.authors || [], c: big(it.productUrl) }));
+        token = j.paginationToken;
+        if (!token) break;
+      }
+      if (!items.length) { // fallback: read the covers visible on the library page
+        document.querySelectorAll('img[id^="cover-"], [id^="cover-"] img').forEach(img => {
+          const holder = img.id && img.id.indexOf('cover-') === 0 ? img : img.closest('[id^="cover-"]');
+          const asin = holder.id.replace(/^cover-/, '');
+          const t = document.getElementById('title-' + asin), w = document.getElementById('author-' + asin);
+          items.push({ a: asin, t: (t ? t.innerText : img.alt || '').trim(), w: [(w ? w.innerText : '').trim()], c: big(img.src) });
+        });
+      }
+      const one = new URLSearchParams(location.search).get('asin');
+      const pick = one ? items.filter(i => i.a === one) : [];
+      if (pick.length) go(pick.map(i => Object.assign(i, { one: 1 })));
+      else if (items.length) go(items.filter(i => i.t));
+      else fail('I couldn’t find your Kindle books on this page. Go to your Library in Kindle Cloud Reader, scroll so the covers show, and try again.');
+    })();
+    return;
+  }
+
+  // Any Amazon book page (Kindle or physical): just this book.
+  const dt = document.title || '';
+  let title = (q('#productTitle') || q('#ebooksProductTitle') || {}).textContent || '';
+  if (!title.trim()) title = dt.split(/ eBook ?:| : | \| /)[0];
+  const authors = Array.from(document.querySelectorAll('#bylineInfo .author a, #bylineInfo a.contributorNameID'))
+    .map(a => a.textContent.trim()).filter(x => x && !/visit|learn more|search|follow|see all/i.test(x));
+  let author = authors[0] || '';
+  if (!author) { const parts = dt.split(' : '); if (parts.length > 2) author = parts[1]; }
+  const img = q('#ebooksImgBlkFront') || q('#imgBlkFront') || q('#landingImage') || q('#main-image');
+  let cover = '';
+  if (img) {
+    try { cover = Object.keys(JSON.parse(img.getAttribute('data-a-dynamic-image') || '{}'))[0] || ''; } catch (e) {}
+    cover = img.getAttribute('data-old-hires') || cover || img.src;
+  }
+  const text = document.body.innerText;
+  const i13 = text.match(/ISBN-13\s*[:‎‏\s]*([\d-]{13,17})/), i10 = text.match(/ISBN-10\s*[:‎‏\s]*([\dX]{10})/);
+  const seriesEl = q('#seriesBulletWidget_feature_div') || q('#rpi-attribute-book_details-series') || q('#seriesTitle_feature_div');
+  const asinM = location.pathname.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i);
+  const kindle = /ebook|kindle/i.test(dt + location.href) || !!q('#ebooksImgBlkFront') || !!q('#ebooksProductTitle');
+  if (!title.trim()) return fail('This doesn’t look like an Amazon book page.');
+  go([{ one: 1, a: asinM ? asinM[1] : '', t: title.trim(), w: [author], c: big(cover),
+        i: (i13 ? i13[1] : i10 ? i10[1] : '').replace(/-/g, ''), s: seriesEl ? seriesEl.innerText.trim() : '', k: kindle ? 1 : 0 }]);
+}
+
+function bookmarkletHref() {
+  const app = location.origin + location.pathname.replace(/index\.html$/, '');
+  return 'javascript:' + encodeURIComponent(`(${sendToBookshelf.toString()})(${JSON.stringify(app)})`);
+}
+
+function openKindleHelp() {
+  const href = bookmarkletHref();
+  const body = openSheet('Add from Kindle & Amazon', `
+    <p style="margin-top:0">A one-click button for your laptop’s bookmarks bar. Click it on <b>Kindle Cloud Reader</b> to bring in your Kindle library, or on <b>any Amazon book page</b> to add that one book.</p>
+    <h4>1 · Show your bookmarks bar</h4>
+    <p style="margin:0">In Chrome or Edge, press <b>Ctrl + Shift + B</b> (Mac: <b>Cmd + Shift + B</b>).</p>
+    <h4>2 · Drag this button onto the bar</h4>
+    <div style="text-align:center;margin:10px 0">
+      <a class="btn" id="bmLink" href="${esc(href)}" style="display:inline-block;text-decoration:none;cursor:grab">📚 Send to My Bookshelf</a>
+    </div>
+    <p style="color:var(--muted);font-size:.86rem;margin:0">Can’t drag it? <button class="link-btn" id="bmCopy">Copy the code</button>, then right-click the bookmarks bar → <b>Add page…</b>, name it <i>Send to My Bookshelf</i>, and paste the code into the URL box.</p>
+    <h4>3 · Use it</h4>
+    <ul style="margin:0;padding-left:20px">
+      <li><b>Kindle library:</b> open <b>read.amazon.co.uk</b> (or .com), go to your <b>Library</b>, and click the bookmark. Your bookshelf opens with your Kindle books listed so you can tick the ones to add.</li>
+      <li><b>One book:</b> on an Amazon book page (Kindle or paperback), click the bookmark to go straight to the check-the-details screen.</li>
+    </ul>
+    <p style="color:var(--muted);font-size:.86rem">After importing, the app quietly fills in synopses, genres and years in the background while it’s open.</p>
+  `);
+  $('#bmLink', body).onclick = e => { e.preventDefault(); toast('Drag this onto your bookmarks bar; don’t click it here', 3000); };
+  $('#bmCopy', body).onclick = async () => {
+    try { await navigator.clipboard.writeText(href); toast('Copied'); }
+    catch { prompt('Copy this code:', href); }
+  };
+}
+
+// ── Receiving books from the button ──
+const amzAuthor = w => (Array.isArray(w) ? w : [w]).map(a => String(a || '').replace(/[:;]+\s*$/, '').trim())
+  .filter(Boolean).map(a => { const p = a.split(','); return p.length === 2 ? `${p[1].trim()} ${p[0].trim()}` : a; }).join(', ');
+
+function fromAmazonItem(it) {
+  const raw = String(it.t || '').replace(/\s*\((?:English Edition|Kindle Edition)\)\s*/ig, ' ')
+    .replace(/\s*[:\-–]\s*(?:a|the)\s+novel\s*$/i, '').replace(/\s*[:\-–]\s*a\s+novel(?=\s*\()/i, '').trim();
+  const tp = splitSeriesFromTitle(raw);
+  let series = tp.series, num = tp.num, total = '';
+  const sm = String(it.s || '').match(/book\s*(\d+(?:\.\d+)?)\s*of\s*(\d+)\s*[:\-–]?\s*(.*)$/i);
+  if (sm) { if (num == null) num = Number(sm[1]); total = Number(sm[2]); if (!series) series = tidySeries(sm[3]); }
+  return {
+    title: tp.title, author: amzAuthor(it.w), series, seriesNum: num ?? '', seriesTotal: total,
+    cover: it.c || '', coverOptions: it.c ? [it.c] : [], isbn: it.i ? isbn10to13(normIsbn(it.i)) || '' : '',
+    asin: it.a || '', format: it.k === 0 ? 'Physical' : 'Kindle',
+  };
+}
+
+function findOwned(d) {
+  const a = norm(String(d.author).split(',')[0]);
+  return state.books.find(x =>
+    (d.asin && x.asin === d.asin) || (d.isbn && x.isbn === d.isbn) ||
+    (norm(x.title) === norm(d.title) && (!a || norm(String(x.author).split(',')[0]) === a)));
+}
+
+// Fill blanks (synopsis, genre, year, series…) from Google Books / Open Library.
+async function enrichDraft(d) {
+  let found = null;
+  if (d.isbn) found = await lookupIsbn(d.isbn).catch(() => null);
+  if (!found && d.title) {
+    const list = await searchLoose(`${d.title} ${String(d.author).split(',')[0]}`).catch(() => []);
+    const want = norm(d.title);
+    const c = list.find(c => { const t = norm(splitSeriesFromTitle(c.title).title); return t && (t.startsWith(want) || want.startsWith(t)); });
+    if (c) found = await candidateToBook(c).catch(() => null);
+  }
+  if (!found) return { ...d, _found: false };
+  const out = { ...d, _found: true };
+  const fill = ['synopsis', 'genre', 'year', 'series', 'seriesNum', 'author'];
+  if (d.format !== 'Kindle') fill.push('isbn');
+  for (const k of fill) if ((out[k] == null || out[k] === '') && found[k] != null && found[k] !== '') out[k] = found[k];
+  out.coverOptions = uniq([...(d.coverOptions || []), ...(found.coverOptions || [])]);
+  if (!out.cover) out.cover = out.coverOptions[0] || '';
+  return out;
+}
+
+let incoming = null;
+try {
+  const m = location.hash.match(/^#kindle=(.+)$/s);
+  if (m) {
+    history.replaceState(null, '', location.pathname + location.search);
+    incoming = JSON.parse(decodeURIComponent(m[1]));
+  }
+} catch { setTimeout(() => toast('Couldn’t read the books sent from Amazon. Try the button again.'), 500); }
+
+async function handleIncoming(items) {
+  if (!Array.isArray(items) || !items.length) return;
+  if (items.length === 1 && items[0].one) {
+    const d = fromAmazonItem(items[0]);
+    openSheet('Adding from Amazon', `<div class="status-msg"><div class="spinner"></div>Getting the details for “${esc(d.title)}”…</div>`);
+    const full = await enrichDraft(d);
+    delete full._found;
+    return openEdit(full, { isNew: true });
+  }
+  openKindleImport(items.map(fromAmazonItem));
+}
+
+function openKindleImport(drafts) {
+  const rows = drafts.map((d, i) => ({ d, i, owned: findOwned(d) }));
+  const newCount = rows.filter(r => !r.owned).length;
+  const body = openSheet('Import from Kindle', `
+    <p style="margin:0 0 8px">Found <b>${drafts.length}</b> books in your Kindle library${newCount < drafts.length ? `. <b>${drafts.length - newCount}</b> ${drafts.length - newCount === 1 ? 'is' : 'are'} already on your shelf` : ''}. Tick the ones you want on your shelf.</p>
+    <div class="inline-form" style="margin:0 0 6px"><input class="inp" id="kSearch" type="search" placeholder="Filter this list"></div>
+    <div style="display:flex;gap:14px;margin-bottom:6px"><button class="link-btn" id="kAll">Tick all new</button><button class="link-btn" id="kNone">Untick all</button></div>
+    <div class="list" id="kList" style="grid-template-columns:1fr">${rows.map(({ d, i, owned }) => {
+      const both = owned && owned.format === 'Physical';
+      const done = owned && !both;
+      return `<label class="row" data-k="${i}" style="cursor:pointer;${done ? 'opacity:.55' : ''}">
+        <input type="checkbox" data-i="${i}" ${owned ? '' : 'checked'} ${done ? 'disabled' : ''} style="width:20px;height:20px;flex:none;accent-color:var(--accent)">
+        ${coverHTML({ title: d.title, author: d.author, cover: d.cover }, { badges: false })}
+        <div class="meta"><div class="t">${esc(d.title)}</div><div class="a">${esc(d.author)}</div>
+          ${d.series ? `<div class="s">${esc(seriesLabel(d))}</div>` : ''}
+          ${done ? `<div class="pills"><span class="pill">Already on your shelf</span></div>` : both ? `<div class="pills"><span class="pill kindle">You own the paperback; tick to mark it as Both</span></div>` : ''}
+        </div></label>`;
+    }).join('')}</div>
+    <div class="save-bar"><button class="btn" id="kGo" style="flex:1"></button></div>
+  `);
+  const boxes = $$('input[data-i]', body);
+  const update = () => { const n = boxes.filter(b => b.checked).length; $('#kGo', body).textContent = n ? `Add ${n} book${n === 1 ? '' : 's'}` : 'Nothing ticked'; $('#kGo', body).disabled = !n; };
+  boxes.forEach(b => b.onchange = update);
+  $('#kAll', body).onclick = () => { boxes.forEach(b => { if (!b.disabled) b.checked = !rows[+b.dataset.i].owned; }); update(); };
+  $('#kNone', body).onclick = () => { boxes.forEach(b => b.checked = false); update(); };
+  $('#kSearch', body).oninput = e => { const q = norm(e.target.value); $$('[data-k]', body).forEach(r => { const d = drafts[+r.dataset.k]; r.style.display = !q || norm(`${d.title} ${d.author} ${d.series}`).includes(q) ? '' : 'none'; }); };
+  update();
+  $('#kGo', body).onclick = () => {
+    const now = Date.now();
+    let added = 0, merged = 0;
+    boxes.filter(b => b.checked).forEach((b, n) => {
+      const { d, owned } = rows[+b.dataset.i];
+      if (owned) { store.save({ ...owned, format: 'Both', asin: owned.asin || d.asin, updatedAt: now }); merged++; return; }
+      const { coverOptions, ...rest } = d;
+      store.save({
+        ...rest, id: uid(), status: 'Unread', synopsis: '', genre: '', year: '',
+        seriesNum: d.seriesNum === '' ? null : d.seriesNum, seriesTotal: d.seriesTotal === '' ? null : d.seriesTotal,
+        addedAt: now - n, updatedAt: now, needsDetails: true,
+      });
+      added++;
+    });
+    closeSheet();
+    toast(`Added ${added} Kindle book${added === 1 ? '' : 's'}${merged ? `, marked ${merged} as Both` : ''}. Filling in details…`, 3500);
+    setTimeout(fillMissingDetails, 800);
+  };
+}
+
+// Background job: looks up synopsis/genre/year for imported books, one at a time.
+let filling = false;
+async function fillMissingDetails() {
+  if (filling) return;
+  filling = true;
+  try {
+    for (;;) {
+      const todo = state.books.filter(b => b.needsDetails);
+      if (!todo.length) break;
+      const b = todo[0];
+      $('#stats').textContent = `Filling in details for ${todo.length} Kindle book${todo.length === 1 ? '' : 's'}…`;
+      const full = await enrichDraft(b).catch(() => ({ ...b, _found: false }));
+      const { _found, coverOptions, needsDetails, ...clean } = full;
+      // Don't overwrite anything you've edited since the import.
+      const latest = state.books.find(x => x.id === b.id) || b;
+      const merged = { ...clean, ...Object.fromEntries(Object.entries(latest).filter(([k, v]) => v !== '' && v != null && k !== 'needsDetails')) };
+      delete merged.needsDetails;
+      merged.updatedAt = Date.now();
+      store.save(merged);
+      // Saves are optimistic; wait for this book to drop off the to-do list.
+      for (let t = 0; t < 50 && state.books.find(x => x.id === b.id && x.needsDetails); t++) await new Promise(r => setTimeout(r, 100));
+      if (state.books.find(x => x.id === b.id && x.needsDetails)) break; // offline or failing; try again next time
+      await new Promise(r => setTimeout(r, 400));
+    }
+  } finally { filling = false; render(); }
+}
+
 /* ═════════════ Menu: backup, display mode, theme, sign out ═════════════ */
 function openMenu() {
   const theme = lsGet('bookshelf.theme', 'auto');
   const body = openSheet('Menu', `
     <div class="menu-list">
+      <button class="btn ghost" id="mKindle">📥 Add from Kindle Cloud Reader / Amazon</button>
       <button class="btn ghost" id="mDisplay">📸 Display mode (hide buttons for photos)</button>
       <button class="btn ghost" id="mExport">⬇️ Download a backup of my books</button>
       <label class="btn ghost">⬆️ Restore from a backup file<input type="file" accept="application/json,.json" id="mImport" hidden></label>
@@ -1277,6 +1670,7 @@ function openMenu() {
       <p style="color:var(--muted);font-size:.82rem;text-align:center;margin:8px 0 0">${hasFirebase ? 'Syncing between your devices.' : 'Saving on this device only. See SETUP.md to turn on syncing.'}</p>
     </div>`);
   $('#mDisplay', body).onclick = () => { closeSheet(); setDisplayMode(true); };
+  $('#mKindle', body).onclick = () => openKindleHelp();
   $('#mExport', body).onclick = () => {
     const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), books: state.books }, null, 1)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -1363,13 +1757,25 @@ $('#q').addEventListener('input', e => { state.q = e.target.value; render(); });
 [['#fStatus', 'status'], ['#fFormat', 'format'], ['#fGenre', 'genre'], ['#fSort', 'sort']].forEach(([s, k]) =>
   $(s).addEventListener('change', e => { state[k] = e.target.value; lsSet('bookshelf.f' + k[0].toUpperCase() + k.slice(1), state[k]); render(); }));
 function clearFilters() { state.q = ''; $('#q').value = ''; ['status', 'format', 'genre'].forEach(k => { state[k] = ''; lsSet('bookshelf.f' + k[0].toUpperCase() + k.slice(1), ''); }); render(); }
+$('#fGroup').onclick = () => {
+  if (state.sort === 'series') return toast('Sorting by series order always keeps series together');
+  state.groupSeries = !state.groupSeries; lsSet('bookshelf.groupSeries', state.groupSeries); render();
+};
 $('#addBtn').onclick = () => openAdd();
 $('#tbrBtn').onclick = openTBR;
 $('#menuBtn').onclick = openMenu;
 
 applyTheme();
 render();
-store.start(books => { state.books = books; render(); }).catch(e => {
+let startedJobs = false;
+store.start((books, ready) => {
+  state.books = books;
+  render();
+  if (!ready || startedJobs) return;
+  startedJobs = true;
+  if (incoming) { const items = incoming; incoming = null; handleIncoming(items); }
+  setTimeout(fillMissingDetails, 1500);
+}).catch(e => {
   toast('Couldn’t connect to Firebase. Check firebase-config.js (' + e.message + ')', 6000);
 });
 
