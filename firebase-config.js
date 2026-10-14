@@ -17,4 +17,4 @@ export const firebaseConfig = {
   storageBucket: "my-bookshelf-57d69.firebasestorage.app",
   messagingSenderId: "188874806133",
   appId: "1:188874806133:web:7afa8167f2df81a626f93c"
-};
+};export const googleBooksKey = "AIzaSyDMqDypU5p_dYlZsneFk3VvaUqzZxh03ww";
