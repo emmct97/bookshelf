@@ -111,6 +111,23 @@ a { color: var(--accent); }
   background-position: calc(100% - 14px) 52%, calc(100% - 9px) 52%; background-size: 5px 5px; background-repeat: no-repeat;
 }
 .chips select.on { border-color: var(--accent); color: var(--accent); }
+/* series stacks (Kindle-style) */
+.stack { position: relative; padding: 12% 12% 0 0; }
+.stack-front { position: relative; z-index: 3; }
+.stack-back { position: absolute; top: 0; width: 88%; z-index: 1; filter: brightness(.78); }
+.stack-back.l1 { left: 6%; top: 6%; z-index: 2; filter: brightness(.9); }
+.stack-back.l2 { left: 12%; top: 0; }
+.stack-back .cover, .stack-front .cover { width: 100%; }
+.stack-count {
+  position: absolute; z-index: 4; right: 2px; bottom: 4px; min-width: 22px; height: 22px; padding: 0 6px;
+  border-radius: 999px; background: var(--ink); color: var(--paper); font-weight: 800; font-size: 12px;
+  display: grid; place-items: center; box-shadow: 0 1px 4px rgba(0,0,0,.35);
+}
+.row .stack-count { min-width: 18px; height: 18px; font-size: 10px; right: 0; bottom: 0; }
+.row .chev { font-size: 1.6rem; color: var(--muted); padding: 0 4px; }
+.folder-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 14px 12px; margin-top: 8px; }
+.folder-grid .sslot { width: auto; }
+.folder-grid .ft { font-size: .76rem; line-height: 1.2; margin-top: 2px; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .chip-toggle { flex: none; border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 6px 12px; font-size: .84rem; font-weight: 600; }
 .chip-toggle::before { content: "○ "; }
 .chip-toggle[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
@@ -381,8 +398,8 @@ body.display-mode main { padding-top: calc(20px + env(safe-area-inset-top)); }
       <select id="fStatus" aria-label="Status"><option value="">All statuses</option><option>Unread</option><option>Reading</option><option>Read</option></select>
       <select id="fFormat" aria-label="Format"><option value="">All formats</option><option value="Physical">Physical</option><option value="Kindle">Kindle</option><option value="Both">Physical &amp; Kindle</option></select>
       <select id="fGenre" aria-label="Genre"><option value="">All genres</option></select>
-      <select id="fSort" aria-label="Sort"><option value="recent">Recently added</option><option value="title">Title</option><option value="author">Author</option><option value="series">Series order</option></select>
-      <button type="button" class="chip-toggle" id="fGroup" aria-pressed="true">Series together</button>
+      <select id="fSort" aria-label="Sort"><option value="recent">Recently added</option><option value="title">Title</option><option value="author">Author surname</option><option value="series">Series order</option></select>
+      <select id="fSeries" aria-label="How series are shown"><option value="stack">Series: stacked</option><option value="side">Series: side by side</option><option value="off">Series: mixed in</option></select>
     </div>
   </div>
 </header>
@@ -500,7 +517,8 @@ const state = {
   format: lsGet('bookshelf.fFormat', ''),
   genre: lsGet('bookshelf.fGenre', ''),
   sort: lsGet('bookshelf.fSort', 'recent'),
-  groupSeries: lsGet('bookshelf.groupSeries', true),
+  // 'stack' = Kindle-style pile you tap to open; 'side' = side by side; 'off' = mixed in
+  seriesMode: lsGet('bookshelf.seriesMode', lsGet('bookshelf.groupSeries', true) ? 'stack' : 'off'),
 };
 const store = hasFirebase ? new FirebaseStore() : new LocalStore();
 if (!hasFirebase) $('#localBanner').classList.remove('hidden');
@@ -523,7 +541,17 @@ function coverHTML(b, { badges = true } = {}) {
 
 /* ═════════════ Filtering & sorting ═════════════ */
 const sortTitle = t => norm(t).replace(/^(the|a|an) /, '');
-const authorLast = a => { const first = String(a || '').split(/,|&| and /)[0].trim(); const parts = first.split(/\s+/); return norm(parts[parts.length - 1] + ' ' + first); };
+// Sort key by surname, the way a real shelf is organised: "Sarah J. Maas" → Maas,
+// "Ursula K. Le Guin" → Le Guin, "Martin Luther King Jr." → King. First names break ties.
+const SURNAME_PARTICLES = new Set(['le', 'la', 'de', 'du', 'da', 'di', 'del', 'della', 'van', 'von', 'der', 'den', 'st', 'st.', 'mac', 'o\'']);
+function authorLast(a) {
+  const first = String(a || '').split(/,|&| and /)[0].trim();
+  const parts = first.split(/\s+/).filter(p => !/^(jr\.?|sr\.?|ii|iii|iv|phd)$/i.test(p));
+  if (!parts.length) return '';
+  let i = parts.length - 1;
+  while (i > 0 && SURNAME_PARTICLES.has(parts[i - 1].toLowerCase())) i--;
+  return norm(parts.slice(i).join(' ') + ' ' + parts.slice(0, i).join(' '));
+}
 const seriesKey = s => norm(s);
 
 function filtered() {
@@ -541,7 +569,7 @@ function filtered() {
     series: seriesCmp,
   }[state.sort] || ((a, b) => 0);
   list.sort(by);
-  return state.groupSeries && state.sort !== 'series' ? keepSeriesTogether(list) : list;
+  return state.seriesMode !== 'off' || state.sort === 'series' ? keepSeriesTogether(list) : list;
 }
 const seriesNo = b => (b.seriesNum === '' || b.seriesNum == null || isNaN(b.seriesNum)) ? 999 : Number(b.seriesNum);
 function seriesCmp(a, b) {
@@ -585,8 +613,8 @@ function render() {
   $('#fStatus').value = state.status; $('#fFormat').value = state.format; $('#fSort').value = state.sort;
   ['#fStatus', '#fFormat', '#fGenre'].forEach(s => $(s).classList.toggle('on', !!$(s).value));
   $('#fSort').classList.toggle('on', state.sort !== 'recent');
-  $('#fGroup').setAttribute('aria-pressed', String(state.groupSeries || state.sort === 'series'));
-  $('#fGroup').classList.toggle('hidden', state.view === 'series');
+  $('#fSeries').value = state.seriesMode;
+  $('#fSeries').classList.toggle('hidden', state.view === 'series');
 
   const v = $('#view');
   if (!books.length) {
@@ -604,11 +632,58 @@ function render() {
   else v.innerHTML = renderShelf(list);
 }
 
+// In "stacked" mode, 2+ books from one series become a single pile (like Kindle collections).
+function shelfItems(list) {
+  if (state.seriesMode !== 'stack') return list;
+  const count = new Map();
+  list.forEach(b => { const k = seriesKey(b.series); if (k) count.set(k, (count.get(k) || 0) + 1); });
+  const out = [], done = new Set();
+  for (const b of list) {
+    const k = seriesKey(b.series);
+    if (!k || count.get(k) < 2) { out.push(b); continue; }
+    if (done.has(k)) continue;
+    done.add(k);
+    out.push({ stack: true, key: k, books: list.filter(x => seriesKey(x.series) === k) }); // already in series order
+  }
+  return out;
+}
+
+function stackHTML(s) {
+  const [front, ...rest] = s.books;
+  const behind = rest.slice(0, 2).reverse();
+  return `<div class="stack">
+    ${behind.map((b, i) => `<div class="stack-back l${behind.length - i}">${coverHTML(b, { badges: false })}</div>`).join('')}
+    <div class="stack-front">${coverHTML(front, { badges: false })}</div>
+    <span class="stack-count">${s.books.length}</span>
+  </div>`;
+}
+
 function renderShelf(list) {
-  return `<div class="shelf-wrap"><div class="bookcase">${list.map(b => {
-    const h = 92 + (hash(b.id) % 9); // small height variation, like real books
-    return `<div class="slot"><button data-open="${b.id}" style="width:${h}%" aria-label="${esc(b.title)}">${coverHTML(b)}</button></div>`;
+  return `<div class="shelf-wrap"><div class="bookcase">${shelfItems(list).map(it => {
+    if (it.stack) {
+      return `<div class="slot"><button data-stack="${esc(it.key)}" style="width:100%" aria-label="${esc(it.books[0].series)}, ${it.books.length} books">${stackHTML(it)}</button></div>`;
+    }
+    const h = 92 + (hash(it.id) % 9); // small height variation, like real books
+    return `<div class="slot"><button data-open="${it.id}" style="width:${h}%" aria-label="${esc(it.title)}">${coverHTML(it)}</button></div>`;
   }).join('')}</div></div>`;
+}
+
+// The "folder" for a series: every book you own in it, in order, with gaps for missing ones.
+function openSeriesFolder(key) {
+  const g = seriesGroups(state.books).get(key);
+  if (!g) return;
+  const slots = seriesSlots(g);
+  const owned = slots.filter(s => !s.missing && s.n !== '?').length;
+  const read = g.books.filter(b => b.status === 'Read').length;
+  const body = openSheet(g.name, `
+    <div class="sub" style="color:var(--muted);margin-top:-4px">${esc(g.books[0].author || '')} · ${g.total ? `${owned} of ${g.total} owned` : `${g.books.length} owned`}${read ? ` · ${read} read` : ''}</div>
+    ${g.total ? `<div class="progress"><span style="width:${Math.min(100, Math.round(owned / g.total * 100))}%"></span></div>` : ''}
+    <div class="folder-grid">${slots.map(s => s.missing
+      ? `<div class="sslot"><div class="missing">${s.n}</div><div class="num">Missing</div></div>`
+      : `<div class="sslot"><button data-open="${s.b.id}">${coverHTML(s.b)}</button><div class="num">#${esc(s.n)}</div><div class="ft">${esc(s.b.title)}</div></div>`).join('')}
+    </div>
+  `);
+  $$('[data-open]', body).forEach(x => x.onclick = () => openDetail(x.dataset.open));
 }
 
 function seriesLabel(b) {
@@ -619,11 +694,24 @@ function seriesLabel(b) {
 }
 
 function renderList(list) {
-  const grouping = state.groupSeries || state.sort === 'series';
+  const grouping = state.seriesMode === 'side' || state.sort === 'series';
   const counts = new Map();
   list.forEach(b => { const k = seriesKey(b.series); if (k) counts.set(k, (counts.get(k) || 0) + 1); });
   let prevKey = '';
-  return `<div class="list">${list.map(b => {
+  return `<div class="list">${shelfItems(list).map(b => {
+    if (b.stack) {
+      const g = seriesGroups(state.books).get(b.key);
+      const nums = b.books.map(x => x.seriesNum).filter(n => n != null && n !== '');
+      return `<button class="row" data-stack="${esc(b.key)}">
+        <div style="width:52px;flex:none">${stackHTML(b)}</div>
+        <div class="meta">
+          <div class="t">${esc(b.books[0].series)}</div>
+          <div class="a">${esc(b.books[0].author)}</div>
+          <div class="s">${b.books.length} books${g && g.total ? ` of ${g.total}` : ''}${nums.length ? ` · #${nums.join(', #')}` : ''}</div>
+        </div>
+        <span class="chev">›</span>
+      </button>`;
+    }
     const k = seriesKey(b.series);
     const header = grouping && k && k !== prevKey && counts.get(k) > 1
       ? `<div class="list-group-h">${esc(b.series)} <span>· ${counts.get(k)} on your shelf</span></div>` : '';
@@ -1749,6 +1837,8 @@ function hideLogin() { $('#loginRoot').innerHTML = ''; }
 
 /* ═════════════ Wiring ═════════════ */
 document.addEventListener('click', e => {
+  const st = e.target.closest('#view [data-stack]');
+  if (st) return openSeriesFolder(st.dataset.stack);
   const o = e.target.closest('#view [data-open]');
   if (o) openDetail(o.dataset.open);
 });
@@ -1757,10 +1847,7 @@ $('#q').addEventListener('input', e => { state.q = e.target.value; render(); });
 [['#fStatus', 'status'], ['#fFormat', 'format'], ['#fGenre', 'genre'], ['#fSort', 'sort']].forEach(([s, k]) =>
   $(s).addEventListener('change', e => { state[k] = e.target.value; lsSet('bookshelf.f' + k[0].toUpperCase() + k.slice(1), state[k]); render(); }));
 function clearFilters() { state.q = ''; $('#q').value = ''; ['status', 'format', 'genre'].forEach(k => { state[k] = ''; lsSet('bookshelf.f' + k[0].toUpperCase() + k.slice(1), ''); }); render(); }
-$('#fGroup').onclick = () => {
-  if (state.sort === 'series') return toast('Sorting by series order always keeps series together');
-  state.groupSeries = !state.groupSeries; lsSet('bookshelf.groupSeries', state.groupSeries); render();
-};
+$('#fSeries').addEventListener('change', e => { state.seriesMode = e.target.value; lsSet('bookshelf.seriesMode', state.seriesMode); render(); });
 $('#addBtn').onclick = () => openAdd();
 $('#tbrBtn').onclick = openTBR;
 $('#menuBtn').onclick = openMenu;
