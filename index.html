@@ -470,12 +470,17 @@ async function gbooks(pathAndQuery) {
 /* ═════════════ Storage: local (this device) or Firebase (synced) ═════════════ */
 const hasFirebase = firebaseConfig && firebaseConfig.apiKey && !String(firebaseConfig.apiKey).includes('PASTE');
 
+// Your settings (like your genre list) are saved as one extra record next to your books,
+// so they sync between devices without any extra Firebase setup.
+const SETTINGS_ID = 'app-settings';
+
 class LocalStore {
-  constructor() { this.key = 'bookshelf.books.v1'; this.books = lsGet(this.key, []); }
-  async start(onChange) { this.onChange = onChange; onChange(this.books, true); }
-  persist() { lsSet(this.key, this.books); this.onChange([...this.books], true); }
+  constructor() { this.key = 'bookshelf.books.v1'; this.books = lsGet(this.key, []); this.meta = lsGet('bookshelf.settings.v1', null); }
+  async start(onChange) { this.onChange = onChange; onChange(this.books, true, this.meta); }
+  persist() { lsSet(this.key, this.books); this.onChange([...this.books], true, this.meta); }
   async save(b) { const i = this.books.findIndex(x => x.id === b.id); if (i >= 0) this.books[i] = b; else this.books.push(b); this.persist(); }
   async remove(id) { this.books = this.books.filter(b => b.id !== id); this.persist(); }
+  async saveMeta(m) { this.meta = m; lsSet('bookshelf.settings.v1', m); this.onChange([...this.books], true, this.meta); }
   signOut() {}
 }
 
@@ -496,7 +501,11 @@ class FirebaseStore {
       hideLogin();
       this.col = F.collection(this.db, 'users', user.uid, 'books');
       this.unsub = F.onSnapshot(this.col,
-        snap => onChange(snap.docs.map(d => ({ id: d.id, ...d.data() })), !snap.metadata.fromCache || snap.docs.length > 0),
+        snap => {
+          const settings = snap.docs.find(d => d.id === SETTINGS_ID);
+          const books = snap.docs.filter(d => d.id !== SETTINGS_ID).map(d => ({ id: d.id, ...d.data() }));
+          onChange(books, !snap.metadata.fromCache || snap.docs.length > 0, settings ? settings.data() : null);
+        },
         err => toast('Sync problem: ' + (err.code || err.message) + ' (see SETUP.md, Part 2)', 6000));
     });
   }
@@ -505,6 +514,7 @@ class FirebaseStore {
     this.F.setDoc(this.F.doc(this.col, b.id), b).catch(e => toast('Could not save: ' + (e.code || e.message), 5000));
   }
   async remove(id) { this.F.deleteDoc(this.F.doc(this.col, id)).catch(e => toast('Could not delete: ' + (e.code || e.message), 5000)); }
+  async saveMeta(m) { this.F.setDoc(this.F.doc(this.col, SETTINGS_ID), m).catch(e => toast('Could not save settings: ' + (e.code || e.message), 5000)); }
   signOut() { this.A.signOut(this.auth); }
 }
 
@@ -863,6 +873,19 @@ function splitSeriesFromTitle(title, subtitle) {
 
 // A book can have several genres, saved as "Fantasy, Romance" (older single-genre books just work).
 const splitGenres = s => uniq(String(s || '').split(',').map(g => g.trim()));
+
+// Your genre list: saved once and offered for every book. Starts from these defaults.
+const DEFAULT_GENRES = ['Romantasy', 'Fantasy', 'Romance', 'Thriller', 'Mystery', 'Horror', 'Science Fiction', 'Historical Fiction', 'Literary Fiction', 'Contemporary', 'Young Adult', 'Classics', 'Non-fiction', 'Memoir', 'Poetry', 'Graphic Novel'];
+const savedGenres = () => (state.meta && Array.isArray(state.meta.genres)) ? state.meta.genres : DEFAULT_GENRES;
+const byName = (a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' });
+// Everything in your list plus anything already on a book, so nothing is ever lost.
+const allGenres = () => uniq([...savedGenres(), ...state.books.flatMap(b => splitGenres(b.genre))]).sort(byName);
+function saveGenreList(list) {
+  store.saveMeta({ ...(state.meta || {}), genres: uniq(list.map(g => String(g).trim()).filter(Boolean)).sort(byName) });
+}
+function rememberGenre(g) {
+  if (!savedGenres().some(x => norm(x) === norm(g))) saveGenreList([...savedGenres(), g]);
+}
 
 function guessGenre(tags) {
   const t = tags.join(' | ').toLowerCase();
@@ -1233,7 +1256,7 @@ function openEdit(data, { isNew = false } = {}) {
     if (ex) { b.series = ex.series; if (!b.seriesTotal && ex.seriesTotal) b.seriesTotal = ex.seriesTotal; }
   }
   let coverOptions = uniq([b.cover, ...(data.coverOptions || [])]);
-  let genres = uniq([...state.books.flatMap(x => splitGenres(x.genre)), 'Romantasy', 'Fantasy', 'Romance', 'Thriller', 'Mystery', 'Horror', 'Science Fiction', 'Historical Fiction', 'Literary Fiction', 'Contemporary', 'Young Adult', 'Classics', 'Non-fiction', 'Memoir', 'Poetry', 'Graphic Novel']);
+  let genres = allGenres();
   const dup = isNew ? findDuplicate(b) : null;
 
   const body = openSheet(isNew ? 'Check the details' : 'Edit book', `
@@ -1385,6 +1408,7 @@ function openEdit(data, { isNew = false } = {}) {
     const g = existing || v;
     if (!existing) genres = [g, ...genres];
     if (!chosen.includes(g)) chosen.push(g);
+    rememberGenre(g); // saved to your genre list straight away, for every book
     $('#genreNew', body).value = '';
     $('#genreNewRow', body).classList.add('hidden');
     drawGenres();
@@ -1395,6 +1419,7 @@ function openEdit(data, { isNew = false } = {}) {
 
   form.onsubmit = e => {
     e.preventDefault();
+    if ($('#genreNew', body).value.trim()) addGenre(); // typed a new genre but didn't tap Add
     const fd = new FormData(form);
     const num = v => { const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? null : n; };
     const book = {
@@ -1748,6 +1773,7 @@ function openMenu() {
   const body = openSheet('Menu', `
     <div class="menu-list">
       <button class="btn ghost" id="mKindle">📥 Add from Kindle Cloud Reader / Amazon</button>
+      <button class="btn ghost" id="mGenres">🏷️ My genres (add, rename, remove)</button>
       <button class="btn ghost" id="mDisplay">📸 Display mode (hide buttons for photos)</button>
       <button class="btn ghost" id="mExport">⬇️ Download a backup of my books</button>
       <label class="btn ghost">⬆️ Restore from a backup file<input type="file" accept="application/json,.json" id="mImport" hidden></label>
@@ -1759,8 +1785,9 @@ function openMenu() {
     </div>`);
   $('#mDisplay', body).onclick = () => { closeSheet(); setDisplayMode(true); };
   $('#mKindle', body).onclick = () => openKindleHelp();
+  $('#mGenres', body).onclick = () => openGenreManager();
   $('#mExport', body).onclick = () => {
-    const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), books: state.books }, null, 1)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), books: state.books, settings: state.meta }, null, 1)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = `my-bookshelf-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
@@ -1772,7 +1799,8 @@ function openMenu() {
       const books = Array.isArray(data) ? data : data.books;
       if (!Array.isArray(books)) throw new Error();
       if (!confirm(`Restore ${books.length} books? Books with the same ID will be overwritten; nothing else is deleted.`)) return;
-      books.forEach(b => b && b.id && b.title && store.save(b));
+      books.forEach(b => b && b.id && b.id !== SETTINGS_ID && b.title && store.save(b));
+      if (data.settings && Array.isArray(data.settings.genres)) saveGenreList([...savedGenres(), ...data.settings.genres]);
       closeSheet(); toast(`Restored ${books.length} books`);
     } catch { toast('That file isn’t a bookshelf backup'); }
   };
@@ -1782,6 +1810,57 @@ function openMenu() {
   });
   if ($('#mOut', body)) $('#mOut', body).onclick = () => { closeSheet(); store.signOut(); };
 }
+/* ═════════════ My genres: add, rename, remove (applies to every book) ═════════════ */
+function openGenreManager() {
+  const body = openSheet('My genres', `
+    <p style="margin:0 0 10px;color:var(--muted);font-size:.9rem">These are offered whenever you add or edit a book, on all your devices. Renaming or removing one updates every book that uses it.</p>
+    <form class="inline-form" id="gmAdd" style="margin:0 0 12px"><input class="inp" id="gmNew" placeholder="New genre, e.g. Dark Academia"><button class="btn">Add</button></form>
+    <div class="menu-list" id="gmList"></div>`);
+  const usage = g => state.books.filter(b => splitGenres(b.genre).includes(g));
+  // Change one genre on every book that has it (rename, or remove when `to` is empty).
+  const retag = (from, to) => usage(from).forEach(b => {
+    const gs = uniq(splitGenres(b.genre).map(x => x === from ? to : x).filter(Boolean));
+    store.save({ ...b, genre: gs.join(', '), updatedAt: Date.now() });
+  });
+  function draw() {
+    $('#gmList', body).innerHTML = allGenres().map(g => {
+      const n = usage(g).length;
+      return `<div class="row" style="padding:8px 12px">
+        <div class="meta"><div class="t" style="font-size:.98rem">${esc(g)}</div><div class="s" style="font-style:normal">${n ? `${n} book${n === 1 ? '' : 's'}` : 'Not used yet'}</div></div>
+        <button class="icon-btn" data-ren="${esc(g)}" aria-label="Rename ${esc(g)}">✎</button>
+        <button class="icon-btn" data-del="${esc(g)}" aria-label="Remove ${esc(g)}">✕</button>
+      </div>`;
+    }).join('');
+    $$('[data-ren]', body).forEach(x => x.onclick = () => {
+      const from = x.dataset.ren;
+      const to = (prompt(`Rename “${from}” to:`, from) || '').trim().replace(/,/g, ' ');
+      if (!to || to === from) return;
+      const existing = allGenres().find(g => norm(g) === norm(to) && g !== from);
+      retag(from, existing || to);
+      saveGenreList([...savedGenres().filter(g => g !== from), existing || to]);
+      toast(existing ? `Merged into “${existing}”` : 'Renamed');
+      setTimeout(draw, 150);
+    });
+    $$('[data-del]', body).forEach(x => x.onclick = () => {
+      const g = x.dataset.del, n = usage(g).length;
+      if (!confirm(n ? `Remove “${g}”? It will also be taken off ${n} book${n === 1 ? '' : 's'}.` : `Remove “${g}” from your list?`)) return;
+      retag(g, '');
+      saveGenreList(savedGenres().filter(x => x !== g));
+      setTimeout(draw, 150);
+    });
+  }
+  $('#gmAdd', body).onsubmit = e => {
+    e.preventDefault();
+    const v = $('#gmNew', body).value.trim().replace(/,/g, ' ');
+    if (!v) return;
+    if (allGenres().some(g => norm(g) === norm(v))) { toast('That genre is already in your list'); return; }
+    saveGenreList([...savedGenres(), v]);
+    $('#gmNew', body).value = '';
+    setTimeout(draw, 150);
+  };
+  draw();
+}
+
 function applyTheme() {
   const t = lsGet('bookshelf.theme', 'auto');
   if (t === 'auto') document.documentElement.removeAttribute('data-theme');
@@ -1855,11 +1934,14 @@ $('#menuBtn').onclick = openMenu;
 applyTheme();
 render();
 let startedJobs = false;
-store.start((books, ready) => {
+store.start((books, ready, meta) => {
   state.books = books;
+  state.meta = meta || null;
   render();
   if (!ready || startedJobs) return;
   startedJobs = true;
+  // First run with this version: start your genre list from the defaults plus every genre already on your books.
+  if (!state.meta || !Array.isArray(state.meta.genres)) saveGenreList(allGenres());
   if (incoming) { const items = incoming; incoming = null; handleIncoming(items); }
   setTimeout(fillMissingDetails, 1500);
 }).catch(e => {
