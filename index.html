@@ -125,6 +125,10 @@ a { color: var(--accent); }
 }
 .row .stack-count { min-width: 18px; height: 18px; font-size: 10px; right: 0; bottom: 0; }
 .row .chev { font-size: 1.6rem; color: var(--muted); padding: 0 4px; }
+button.missing { width: 100%; padding: 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-family: var(--serif); }
+button.missing small { font-family: var(--sans); font-size: .68rem; font-weight: 700; color: var(--accent); }
+button.missing:hover, button.missing:focus-visible { border-color: var(--accent); }
+button.missing.add-more { font-size: 1.6rem; color: var(--accent); }
 .folder-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 14px 12px; margin-top: 8px; }
 .folder-grid .sslot { width: auto; }
 .folder-grid .ft { font-size: .76rem; line-height: 1.2; margin-top: 2px; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -500,6 +504,7 @@ function explainSaveError(e) {
   if (code === 'storage-full') return 'this device’s storage for the app is full. Setting up syncing (SETUP.md, Part 2) removes this limit.';
   if (code === 'resource-exhausted') return 'Firebase’s free daily allowance has been used up. It resets overnight; tap Try again tomorrow.';
   if (code === 'permission-denied' || code === 'unauthenticated') return 'you seem to be signed out on this device. Sign in again, then tap Try again.';
+  if (code === 'unavailable') return 'this device’s saved copy of your library stopped responding (a known iPhone/Safari glitch). The app restarts itself to fix it and then tries again automatically.';
   if (code === 'invalid-argument') return 'Firebase didn’t accept one of the details (' + msg.slice(0, 120) + ').';
   return (code || 'unknown problem') + (msg ? ': ' + msg.slice(0, 120) : '');
 }
@@ -578,8 +583,14 @@ class FirebaseStore {
     this.A = A; this.F = F;
     const app = initializeApp(firebaseConfig);
     this.auth = A.getAuth(app);
+    // Normally Firebase keeps a copy of your library on the device (for speed and offline use).
+    // If that copy keeps breaking on this device (an iPhone/Safari glitch), use a simpler mode instead.
+    this.memoryMode = lsGet('bookshelf.memoryCache', false);
     try {
-      this.db = F.initializeFirestore(app, { ignoreUndefinedProperties: true, localCache: F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }) });
+      this.db = F.initializeFirestore(app, {
+        ignoreUndefinedProperties: true,
+        localCache: this.memoryMode ? F.memoryLocalCache() : F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }),
+      });
     } catch { this.db = F.getFirestore(app); }
     A.onAuthStateChanged(this.auth, user => {
       if (this.unsub) { this.unsub(); this.unsub = null; }
@@ -592,17 +603,45 @@ class FirebaseStore {
           const books = snap.docs.filter(d => d.id !== SETTINGS_ID).map(d => ({ id: d.id, ...d.data() }));
           onChange(books, !snap.metadata.fromCache || snap.docs.length > 0, settings ? settings.data() : null);
         },
-        err => toast('Sync problem: ' + (err.code || err.message) + ' (see SETUP.md, Part 2)', 6000));
+        err => { if (!this.fixStorage(err)) toast('Sync problem: ' + (err.code || err.message) + ' (see SETUP.md, Part 2)', 6000); });
     });
+  }
+  // "unavailable" here means the on-device copy stopped responding. Restarting fixes it;
+  // if it happens again soon after, switch this device to the simpler mode for good.
+  fixStorage(e, force = false) {
+    const broken = e && (e.code === 'unavailable' || /indexed ?db|indexed database/i.test(String(e.message)));
+    if (!force && (!broken || this.memoryMode)) return false;
+    if (this.restarting) return true;
+    this.restarting = true;
+    const last = lsGet('bookshelf.storageFailAt', 0);
+    if (Date.now() - last < 15 * 60 * 1000) lsSet('bookshelf.memoryCache', true); // broke again soon after: use the simpler mode
+    lsSet('bookshelf.storageFailAt', Date.now());
+    toast('Fixing a storage problem on this device. Restarting, your changes are kept…', 3500);
+    // Throw away this device's stuck copy (your books are safe in Firebase and download again),
+    // then restart. Unsaved edits are kept separately and saved automatically after the restart.
+    (async () => {
+      try { await this.F.terminate(this.db); } catch {}
+      try {
+        const dbs = indexedDB.databases ? await indexedDB.databases() : [];
+        const names = dbs.map(d => d.name).filter(n => n && n.startsWith('firestore/'));
+        if (!names.length) names.push(`firestore/[DEFAULT]/${firebaseConfig.projectId}/main`);
+        await Promise.all(names.map(n => new Promise(res => {
+          const req = indexedDB.deleteDatabase(n);
+          req.onsuccess = req.onerror = req.onblocked = () => res();
+        })));
+      } catch {}
+      setTimeout(() => location.reload(), 600);
+    })();
+    return true;
   }
   async save(b) {
     // Not awaited on purpose: works offline and syncs when back online.
     let data;
     try { data = await prepareForSave(b); } catch (e) { return saveFailed(b, e); }
-    this.F.setDoc(this.F.doc(this.col, b.id), data).then(() => saveSucceeded(b.id), e => saveFailed(b, e));
+    this.F.setDoc(this.F.doc(this.col, b.id), data).then(() => saveSucceeded(b.id), e => { saveFailed(b, e); this.fixStorage(e); });
   }
-  async remove(id) { this.F.deleteDoc(this.F.doc(this.col, id)).catch(e => toast('Could not delete: ' + (e.code || e.message), 5000)); }
-  async saveMeta(m) { this.F.setDoc(this.F.doc(this.col, SETTINGS_ID), m).catch(e => toast('Could not save settings: ' + (e.code || e.message), 5000)); }
+  async remove(id) { this.F.deleteDoc(this.F.doc(this.col, id)).catch(e => { if (!this.fixStorage(e)) toast('Could not delete: ' + explainSaveError(e), 5000); }); }
+  async saveMeta(m) { this.F.setDoc(this.F.doc(this.col, SETTINGS_ID), m).catch(e => { if (!this.fixStorage(e)) toast('Could not save your genre list: ' + explainSaveError(e), 5000); }); }
   signOut() { this.A.signOut(this.auth); }
 }
 
@@ -774,14 +813,117 @@ function openSeriesFolder(key) {
   const owned = slots.filter(s => !s.missing && s.n !== '?').length;
   const read = g.books.filter(b => b.status === 'Read').length;
   const body = openSheet(g.name, `
-    <div class="sub" style="color:var(--muted);margin-top:-4px">${esc(g.books[0].author || '')} · ${g.total ? `${owned} of ${g.total} owned` : `${g.books.length} owned`}${read ? ` · ${read} read` : ''}</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:-4px">
+      <div class="sub" style="color:var(--muted);flex:1">${esc(g.books[0].author || '')} · ${g.total ? `${owned} of ${g.total} owned` : `${g.books.length} owned`}${read ? ` · ${read} read` : ''}</div>
+      <button class="icon-btn" id="folderEdit">✎ Edit series</button>
+    </div>
     ${g.total ? `<div class="progress"><span style="width:${Math.min(100, Math.round(owned / g.total * 100))}%"></span></div>` : ''}
     <div class="folder-grid">${slots.map(s => s.missing
-      ? `<div class="sslot"><div class="missing">${s.n}</div><div class="num">Missing</div></div>`
+      ? missingSlotHTML(key, s.n)
       : `<div class="sslot"><button data-open="${s.b.id}">${coverHTML(s.b)}</button><div class="num">#${esc(s.n)}</div><div class="ft">${esc(s.b.title)}</div></div>`).join('')}
     </div>
   `);
   $$('[data-open]', body).forEach(x => x.onclick = () => openDetail(x.dataset.open));
+  $$('[data-addto]', body).forEach(x => x.onclick = () => addToSeries(x.dataset.addto, x.dataset.n));
+  $('#folderEdit', body).onclick = () => openSeriesEditor(key);
+}
+
+// Edit a series: rename it, set how many books it has, renumber, remove books,
+// add books already on your shelf, or add a brand-new book straight into it.
+function openSeriesEditor(key) {
+  const g = key ? seriesGroups(state.books).get(key) : { name: '', books: [], total: 0 };
+  if (!g) return;
+  const byId = id => state.books.find(b => b.id === id);
+  let rows = g.books.slice().sort((a, b) => seriesNo(a) - seriesNo(b)).map(b => ({ id: b.id, num: b.seriesNum ?? '', keep: true, original: true }));
+  const body = openSheet(key ? 'Edit series' : 'New series', `
+    <label class="f">Series name<input class="inp" id="seName" value="${esc(g.name)}" placeholder="e.g. Throne of Glass" autocomplete="off"></label>
+    <label class="f" style="max-width:60%">How many books in the series?<input class="inp" id="seTotal" value="${esc(g.total || '')}" inputmode="numeric" placeholder="e.g. 8"></label>
+    <h4>Books in this series</h4>
+    <div class="list" id="seRows" style="grid-template-columns:1fr"></div>
+    <div style="display:grid;gap:8px;margin-top:10px">
+      <button class="btn ghost" type="button" id="seAddOwned">+ Add a book from my shelf</button>
+      <div id="sePicker" class="hidden">
+        <input class="inp" id="seSearch" type="search" placeholder="Search my books" autocomplete="off">
+        <div class="list" id="seResults" style="grid-template-columns:1fr;margin-top:8px;max-height:320px;overflow-y:auto"></div>
+      </div>
+      <button class="btn ghost" type="button" id="seAddNew">+ Add a new book (scan or search)</button>
+    </div>
+    <div class="save-bar"><button class="btn ghost" type="button" data-close>Cancel</button><button class="btn" type="button" id="seSave">Save series</button></div>
+  `);
+  const nextNum = () => {
+    const used = new Set(rows.filter(r => r.keep).map(r => Math.floor(Number(r.num))).filter(n => n > 0));
+    let n = 1; while (used.has(n)) n++; return n;
+  };
+  function drawRows() {
+    const box = $('#seRows', body);
+    if (!rows.length) { box.innerHTML = `<p class="status-msg" style="padding:6px 0">No books yet. Add some below.</p>`; return; }
+    rows.sort((a, b) => (Number(a.num) || 999) - (Number(b.num) || 999));
+    box.innerHTML = rows.map((r, i) => {
+      const b = byId(r.id);
+      if (!b) return '';
+      return `<div class="row" style="padding:8px;${r.keep ? '' : 'opacity:.45'}">
+        <div style="width:40px;flex:none">${coverHTML(b, { badges: false })}</div>
+        <div class="meta"><div class="t" style="font-size:.95rem;${r.keep ? '' : 'text-decoration:line-through'}">${esc(b.title)}</div><div class="a" style="font-size:.8rem">${esc(b.author)}${b.series && seriesKey(b.series) !== key && r.keep && !r.original ? ` · moving from ${esc(b.series)}` : ''}</div></div>
+        ${r.keep ? `<label style="font-size:.75rem;color:var(--muted);text-align:center">Book #<input class="inp" data-num="${i}" value="${esc(r.num)}" inputmode="decimal" style="width:56px;margin:2px 0 0;padding:6px;text-align:center"></label>
+          <button class="icon-btn" type="button" data-rm="${i}" aria-label="Take out of this series">✕</button>`
+        : `<button class="link-btn" type="button" data-undo="${i}">Undo</button>`}
+      </div>`;
+    }).join('');
+    $$('[data-num]', box).forEach(x => x.oninput = () => { rows[+x.dataset.num].num = x.value; });
+    $$('[data-num]', box).forEach(x => x.onchange = drawRows);
+    $$('[data-rm]', box).forEach(x => x.onclick = () => { const r = rows[+x.dataset.rm]; if (r.original) r.keep = false; else rows.splice(+x.dataset.rm, 1); drawRows(); });
+    $$('[data-undo]', box).forEach(x => x.onclick = () => { rows[+x.dataset.undo].keep = true; drawRows(); });
+  }
+  function drawPicker() {
+    const q = norm($('#seSearch', body).value);
+    const inRows = new Set(rows.map(r => r.id));
+    const list = state.books.filter(b => !inRows.has(b.id) && (!q || norm(`${b.title} ${b.author} ${b.series}`).includes(q)))
+      .sort((a, b) => authorLast(a.author).localeCompare(authorLast(b.author)) || sortTitle(a.title).localeCompare(sortTitle(b.title))).slice(0, 60);
+    $('#seResults', body).innerHTML = list.length ? list.map(b => `<button class="row" type="button" data-pick="${b.id}" style="padding:8px">
+        <div style="width:36px;flex:none">${coverHTML(b, { badges: false })}</div>
+        <div class="meta"><div class="t" style="font-size:.92rem">${esc(b.title)}</div><div class="a" style="font-size:.8rem">${esc(b.author)}${b.series ? ` · in ${esc(seriesLabel(b))}` : ''}</div></div>
+        <span class="chev">+</span></button>`).join('')
+      : `<p class="status-msg" style="padding:6px 0">No matching books.</p>`;
+    $$('[data-pick]', body).forEach(x => x.onclick = () => {
+      rows.push({ id: x.dataset.pick, num: nextNum(), keep: true, original: false });
+      drawRows(); drawPicker();
+      toast('Added. Check its book number above');
+    });
+  }
+  $('#seAddOwned', body).onclick = () => { $('#sePicker', body).classList.toggle('hidden'); drawPicker(); if (!isTouch) $('#seSearch', body).focus(); };
+  $('#seSearch', body).oninput = drawPicker;
+
+  // Apply everything; returns the saved series name (or null if something needs fixing).
+  function apply() {
+    const name = $('#seName', body).value.trim();
+    const kept = rows.filter(r => r.keep);
+    if (!name && kept.length) { toast('Give the series a name first'); $('#seName', body).focus(); return null; }
+    const totalRaw = parseInt($('#seTotal', body).value, 10);
+    const total = isNaN(totalRaw) ? null : totalRaw;
+    let changed = 0;
+    for (const r of rows) {
+      const b = byId(r.id); if (!b) continue;
+      let next;
+      if (!r.keep) next = { ...b, series: '', seriesNum: null, seriesTotal: null };
+      else { const n = parseFloat(String(r.num).replace(',', '.')); next = { ...b, series: name, seriesNum: isNaN(n) ? null : n, seriesTotal: total }; }
+      if (next.series !== b.series || next.seriesNum !== b.seriesNum || (next.seriesTotal ?? null) !== (b.seriesTotal ?? null)) {
+        store.save({ ...next, updatedAt: Date.now() }); changed++;
+      }
+    }
+    return { name, total, changed };
+  }
+  $('#seSave', body).onclick = () => {
+    const res = apply(); if (!res) return;
+    closeSheet();
+    toast(res.changed ? `Saved “${res.name || 'series'}”` : 'No changes');
+  };
+  $('#seAddNew', body).onclick = () => {
+    const res = apply(); if (!res) return;
+    if (!res.name) { toast('Give the series a name first'); $('#seName', body).focus(); return; }
+    openAdd(undefined, { series: res.name, seriesNum: nextNum(), seriesTotal: res.total || '', author: (byId((rows.find(r => r.keep) || {}).id) || {}).author || '' });
+  };
+  drawRows();
+  if (!key) { $('#seAddOwned', body).click(); }
 }
 
 function seriesLabel(b) {
@@ -858,13 +1000,24 @@ function seriesSlots(g) {
   return slots;
 }
 
+// A dashed gap for a book you don't own yet. Tap it to add that book straight into the series.
+function missingSlotHTML(key, n) {
+  return `<div class="sslot"><button class="missing" data-addto="${esc(key)}" data-n="${esc(n)}" aria-label="Add book ${esc(n)}">${esc(n)}<small>+ Add</small></button><div class="num">Missing</div></div>`;
+}
+function addToSeries(key, n) {
+  const g = seriesGroups(state.books).get(key);
+  if (!g) return;
+  openAdd(undefined, { series: g.name, seriesNum: Number(n), seriesTotal: g.total || '', author: g.books[0].author || '' });
+}
+
 function renderSeries(list) {
   const groups = seriesGroups(state.books); // gaps are based on everything you own...
   const showKeys = new Set(list.filter(b => b.series).map(b => seriesKey(b.series))); // ...but only series matching filters are shown
   const shown = [...groups.entries()].filter(([k]) => showKeys.has(k)).sort((a, b) => sortTitle(a[1].name).localeCompare(sortTitle(b[1].name)));
   const standalone = list.filter(b => !b.series).length;
-  if (!shown.length) return `<div class="empty"><h2>No series yet</h2><p>Add a series name and book number to a book (tap it, then Edit) and it will appear here.</p></div>`;
-  return shown.map(([, g]) => {
+  const tools = `<div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn ghost" data-newseries>+ New series</button></div>`;
+  if (!shown.length) return tools + `<div class="empty"><h2>No series yet</h2><p>Tap <b>+ New series</b> to make one from books on your shelf, or add a series name to a book when you edit it.</p></div>`;
+  return tools + shown.map(([key, g]) => {
     const slots = seriesSlots(g);
     const known = slots.filter(s => s.n !== '?');
     const ownedCount = known.filter(s => !s.missing).length;
@@ -872,12 +1025,16 @@ function renderSeries(list) {
     const missing = known.filter(s => s.missing).length;
     const pct = g.total ? Math.min(100, Math.round(ownedCount / g.total * 100)) : 100;
     return `<section class="series-card">
-      <h3>${esc(g.name)}</h3>
+      <div style="display:flex;align-items:flex-start;gap:8px">
+        <h3 style="flex:1">${esc(g.name)}</h3>
+        <button class="icon-btn" data-editseries="${esc(key)}" aria-label="Edit ${esc(g.name)}">✎ Edit</button>
+      </div>
       <div class="sub">${esc(g.books[0].author || '')} · ${totalTxt}${missing ? ` · missing ${missing}` : ''}</div>
       ${g.total ? `<div class="progress"><span style="width:${pct}%"></span></div>` : ''}
       <div class="series-row">${slots.map(s => s.missing
-        ? `<div class="sslot"><div class="missing">${s.n}</div><div class="num">Missing</div></div>`
+        ? missingSlotHTML(key, s.n)
         : `<div class="sslot"><button data-open="${s.b.id}">${coverHTML(s.b)}</button><div class="num">#${esc(s.n)}</div></div>`).join('')}
+        <div class="sslot"><button class="missing add-more" data-editseries="${esc(key)}" aria-label="Add books to ${esc(g.name)}">+<small>Add books</small></button></div>
       </div>
     </section>`;
   }).join('') + (standalone ? `<p class="empty" style="padding:8px">+ ${standalone} standalone book${standalone === 1 ? '' : 's'} not in a series</p>` : '');
@@ -1206,14 +1363,18 @@ async function stopScanner() {
   if (s) { try { if (s.isScanning) await s.stop(); s.clear(); } catch {} }
 }
 
-function openAdd(tab = isTouch ? 'scan' : 'search') {
-  const body = openSheet('Add a book', `
+// When adding a book from a series (e.g. tapping a missing #5), these details are filled in for you.
+let addPreset = null;
+function openAdd(tab = isTouch ? 'scan' : 'search', preset = null) {
+  addPreset = preset;
+  const body = openSheet(preset ? `Add ${preset.series} #${preset.seriesNum}` : 'Add a book', `
+    ${preset ? `<div class="note" style="background:var(--card);margin:0 0 12px">Find the book any way you like; it will be added to <b>${esc(preset.series)}</b> as book <b>#${esc(preset.seriesNum)}</b>.</div>` : ''}
     <div class="seg" id="addTabs">
       <button data-t="scan">Scan</button><button data-t="search">Search</button><button data-t="link">Amazon link</button>
     </div>
     <div id="addPane" style="margin-top:14px"></div>
     <div style="text-align:center;margin-top:14px"><button class="link-btn" id="manualBtn">Add by hand instead</button></div>
-  `, { onClose: stopScanner });
+  `, { onClose: () => { stopScanner(); addPreset = null; } });
   $$('#addTabs button', body).forEach(b => b.onclick = () => showTab(b.dataset.t));
   $('#manualBtn', body).onclick = () => { stopScanner(); openEdit({ isbn: '' }, { isNew: true }); };
   showTab(tab);
@@ -1327,6 +1488,7 @@ function findDuplicate(b) {
 }
 
 function openEdit(data, { isNew = false } = {}) {
+  if (isNew && addPreset) { data = { ...data, ...addPreset }; addPreset = null; }
   const b = {
     id: data.id || uid(), title: data.title || '', author: data.author || '', series: data.series || '',
     seriesNum: data.seriesNum ?? '', seriesTotal: data.seriesTotal ?? '', synopsis: data.synopsis || '',
@@ -1864,7 +2026,8 @@ function openMenu() {
       <div style="margin-top:6px"><label class="f" style="margin:0 0 6px">Appearance</label>
         <div class="seg" id="mTheme">${[['auto', 'Match phone'], ['light', 'Light'], ['dark', 'Dark']].map(([v, l]) => `<button data-v="${v}" class="${theme === v ? 'on' : ''}">${l}</button>`).join('')}</div>
       </div>
-      ${hasFirebase ? `<button class="btn ghost" id="mOut" style="margin-top:6px">Sign out</button>` : ''}
+      ${hasFirebase ? `<button class="btn ghost" id="mFix">🔧 Fix syncing on this device</button>
+      <button class="btn ghost" id="mOut" style="margin-top:6px">Sign out</button>` : ''}
       <p style="color:var(--muted);font-size:.82rem;text-align:center;margin:8px 0 0">${hasFirebase ? 'Syncing between your devices.' : 'Saving on this device only. See SETUP.md to turn on syncing.'}</p>
     </div>`);
   $('#mDisplay', body).onclick = () => { closeSheet(); setDisplayMode(true); };
@@ -1893,6 +2056,9 @@ function openMenu() {
     $$('#mTheme button', body).forEach(x => x.classList.toggle('on', x === btn));
   });
   if ($('#mOut', body)) $('#mOut', body).onclick = () => { closeSheet(); store.signOut(); };
+  if ($('#mFix', body)) $('#mFix', body).onclick = () => {
+    if (confirm('This refreshes this device’s copy of your library from Firebase and restarts the app. Your books are safe and nothing is deleted from Firebase. Continue?')) store.fixStorage({ code: 'unavailable' }, true);
+  };
 }
 /* ═════════════ My genres: add, rename, remove (applies to every book) ═════════════ */
 function openGenreManager() {
@@ -2000,6 +2166,11 @@ function hideLogin() { $('#loginRoot').innerHTML = ''; }
 
 /* ═════════════ Wiring ═════════════ */
 document.addEventListener('click', e => {
+  const ad = e.target.closest('#view [data-addto]');
+  if (ad) return addToSeries(ad.dataset.addto, ad.dataset.n);
+  const es = e.target.closest('#view [data-editseries]');
+  if (es) return openSeriesEditor(es.dataset.editseries);
+  if (e.target.closest('#view [data-newseries]')) return openSeriesEditor(null);
   const st = e.target.closest('#view [data-stack]');
   if (st) return openSeriesFolder(st.dataset.stack);
   const o = e.target.closest('#view [data-open]');
@@ -2025,6 +2196,15 @@ store.start((books, ready, meta) => {
   render();
   if (!ready || startedJobs) return;
   startedJobs = true;
+  // Anything that couldn't be saved last time: try again now.
+  // (Skip any that were changed more recently on another device.)
+  Object.values(unsaved).forEach(u => {
+    const cur = state.books.find(x => x.id === u.book.id);
+    if (cur && (cur.updatedAt || 0) > (u.book.updatedAt || 0)) delete unsaved[u.book.id];
+  });
+  lsSet('bookshelf.unsaved.v1', unsaved); renderUnsaved();
+  const pending = Object.values(unsaved);
+  if (pending.length) { pending.forEach(u => store.save({ ...u.book, updatedAt: Date.now() })); toast(`Saving ${pending.length} change${pending.length === 1 ? '' : 's'} from before…`); }
   // First run with this version: start your genre list from the defaults plus every genre already on your books.
   if (!state.meta || !Array.isArray(state.meta.genres)) saveGenreList(allGenres());
   if (incoming) { const items = incoming; incoming = null; handleIncoming(items); }
