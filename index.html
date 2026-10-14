@@ -408,6 +408,8 @@ body.display-mode main { padding-top: calc(20px + env(safe-area-inset-top)); }
   Books are only being saved on this device for now. Follow <b>SETUP.md</b> (Part 2) to sync your phone and laptop.
 </div>
 
+<div class="banner note bad hidden" id="unsavedBanner" role="alert"></div>
+
 <main id="view"></main>
 
 <button class="fab" id="addBtn" aria-label="Add a book">
@@ -434,7 +436,7 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const hash = s => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); };
 const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } };
-const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } };
 const isTouch = matchMedia('(pointer: coarse)').matches;
 
 function toast(msg, ms = 2400) {
@@ -474,11 +476,95 @@ const hasFirebase = firebaseConfig && firebaseConfig.apiKey && !String(firebaseC
 // so they sync between devices without any extra Firebase setup.
 const SETTINGS_ID = 'app-settings';
 
+/* ── Saving safely ── */
+// Firebase refuses a whole book if one field is "undefined" or the record is over 1 MB,
+// so tidy every book first and shrink oversized uploaded cover photos.
+async function prepareForSave(b) {
+  const data = {};
+  for (const [k, v] of Object.entries(b)) {
+    if (v === undefined || typeof v === 'function' || k.startsWith('_') || k === 'coverOptions') continue;
+    data[k] = (typeof v === 'number' && !isFinite(v)) ? null : v;
+  }
+  if (typeof data.cover === 'string' && data.cover.startsWith('data:') && data.cover.length > 300000) {
+    data.cover = await shrinkDataUrl(data.cover);
+  }
+  if (JSON.stringify(data).length > 900000) throw { code: 'too-big' };
+  return data;
+}
+
+// Edits that couldn't be saved are kept on this device until they go through.
+let unsaved = lsGet('bookshelf.unsaved.v1', {});
+function explainSaveError(e) {
+  const code = (e && e.code) || '', msg = String((e && e.message) || '');
+  if (code === 'too-big' || /exceeds the maximum|too large|maximum allowed size/i.test(msg)) return 'the book’s details are too big to save (usually an uploaded cover photo). Try a smaller photo or paste an image link instead.';
+  if (code === 'storage-full') return 'this device’s storage for the app is full. Setting up syncing (SETUP.md, Part 2) removes this limit.';
+  if (code === 'resource-exhausted') return 'Firebase’s free daily allowance has been used up. It resets overnight; tap Try again tomorrow.';
+  if (code === 'permission-denied' || code === 'unauthenticated') return 'you seem to be signed out on this device. Sign in again, then tap Try again.';
+  if (code === 'invalid-argument') return 'Firebase didn’t accept one of the details (' + msg.slice(0, 120) + ').';
+  return (code || 'unknown problem') + (msg ? ': ' + msg.slice(0, 120) : '');
+}
+function saveFailed(b, e) {
+  console.error('Save failed', b && b.title, e);
+  unsaved[b.id] = { book: b, why: explainSaveError(e), at: Date.now() };
+  lsSet('bookshelf.unsaved.v1', unsaved);
+  renderUnsaved();
+  toast('Couldn’t save “' + (b.title || 'this book') + '”. Your changes are kept, see the note at the top.', 5000);
+}
+function saveSucceeded(id) {
+  if (!unsaved[id]) return;
+  delete unsaved[id];
+  lsSet('bookshelf.unsaved.v1', unsaved);
+  renderUnsaved();
+}
+function renderUnsaved() {
+  const box = $('#unsavedBanner');
+  const list = Object.values(unsaved);
+  box.classList.toggle('hidden', !list.length);
+  if (!list.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<b>⚠️ ${list.length === 1 ? '1 change' : list.length + ' changes'} not saved yet</b>
+    ${list.map(u => `<div style="margin-top:6px"><b>${esc(u.book.title || 'Untitled')}</b>: ${esc(u.why)}</div>`).join('')}
+    <div style="display:flex;gap:14px;margin-top:6px">
+      <button class="link-btn" id="unsavedRetry">Try again</button>
+      ${list.length === 1 ? `<button class="link-btn" id="unsavedEdit">Edit it</button>` : ''}
+      <button class="link-btn" id="unsavedDrop" style="color:var(--muted)">Discard</button>
+    </div>`;
+  $('#unsavedRetry').onclick = () => { list.forEach(u => store.save({ ...u.book, updatedAt: Date.now() })); toast('Trying again…'); };
+  if ($('#unsavedEdit')) $('#unsavedEdit').onclick = () => openEdit(list[0].book);
+  $('#unsavedDrop').onclick = () => { if (confirm('Throw away these unsaved changes?')) { unsaved = {}; lsSet('bookshelf.unsaved.v1', unsaved); renderUnsaved(); } };
+}
+
+// Resize an image so neither side is too big, then compress until it's comfortably small.
+function drawToJpeg(img, maxW = 600, maxH = 900, maxBytes = 200000) {
+  const scale = Math.min(1, maxW / img.width, maxH / img.height);
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(img.width * scale)); c.height = Math.max(1, Math.round(img.height * scale));
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  let q = 0.82, out = c.toDataURL('image/jpeg', q);
+  while (out.length > maxBytes * 1.37 && q > 0.4) { q -= 0.1; out = c.toDataURL('image/jpeg', q); }
+  return out;
+}
+function shrinkDataUrl(url) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => resolve(drawToJpeg(img));
+    img.onerror = () => resolve(url);
+    img.src = url;
+  });
+}
+
 class LocalStore {
   constructor() { this.key = 'bookshelf.books.v1'; this.books = lsGet(this.key, []); this.meta = lsGet('bookshelf.settings.v1', null); }
   async start(onChange) { this.onChange = onChange; onChange(this.books, true, this.meta); }
   persist() { lsSet(this.key, this.books); this.onChange([...this.books], true, this.meta); }
-  async save(b) { const i = this.books.findIndex(x => x.id === b.id); if (i >= 0) this.books[i] = b; else this.books.push(b); this.persist(); }
+  async save(b) {
+    let data;
+    try { data = await prepareForSave(b); } catch (e) { return saveFailed(b, e); }
+    const before = this.books.slice();
+    const i = this.books.findIndex(x => x.id === b.id); if (i >= 0) this.books[i] = data; else this.books.push(data);
+    if (!lsSet(this.key, this.books)) { this.books = before; return saveFailed(b, { code: 'storage-full' }); }
+    saveSucceeded(b.id);
+    this.onChange([...this.books], true, this.meta);
+  }
   async remove(id) { this.books = this.books.filter(b => b.id !== id); this.persist(); }
   async saveMeta(m) { this.meta = m; lsSet('bookshelf.settings.v1', m); this.onChange([...this.books], true, this.meta); }
   signOut() {}
@@ -493,7 +579,7 @@ class FirebaseStore {
     const app = initializeApp(firebaseConfig);
     this.auth = A.getAuth(app);
     try {
-      this.db = F.initializeFirestore(app, { localCache: F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }) });
+      this.db = F.initializeFirestore(app, { ignoreUndefinedProperties: true, localCache: F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }) });
     } catch { this.db = F.getFirestore(app); }
     A.onAuthStateChanged(this.auth, user => {
       if (this.unsub) { this.unsub(); this.unsub = null; }
@@ -511,7 +597,9 @@ class FirebaseStore {
   }
   async save(b) {
     // Not awaited on purpose: works offline and syncs when back online.
-    this.F.setDoc(this.F.doc(this.col, b.id), b).catch(e => toast('Could not save: ' + (e.code || e.message), 5000));
+    let data;
+    try { data = await prepareForSave(b); } catch (e) { return saveFailed(b, e); }
+    this.F.setDoc(this.F.doc(this.col, b.id), data).then(() => saveSucceeded(b.id), e => saveFailed(b, e));
   }
   async remove(id) { this.F.deleteDoc(this.F.doc(this.col, id)).catch(e => toast('Could not delete: ' + (e.code || e.message), 5000)); }
   async saveMeta(m) { this.F.setDoc(this.F.doc(this.col, SETTINGS_ID), m).catch(e => toast('Could not save settings: ' + (e.code || e.message), 5000)); }
@@ -1099,12 +1187,8 @@ function fileToCover(file) {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
-      const maxH = 750, scale = Math.min(1, maxH / img.height);
-      const c = document.createElement('canvas');
-      c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
       URL.revokeObjectURL(url);
-      resolve(c.toDataURL('image/jpeg', 0.8));
+      resolve(drawToJpeg(img)); // limits width AND height, so wide screenshots stay small too
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that image')); };
     img.src = url;
@@ -1932,6 +2016,7 @@ $('#tbrBtn').onclick = openTBR;
 $('#menuBtn').onclick = openMenu;
 
 applyTheme();
+renderUnsaved();
 render();
 let startedJobs = false;
 store.start((books, ready, meta) => {
