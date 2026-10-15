@@ -136,6 +136,9 @@ button.missing.add-more { font-size: 1.6rem; color: var(--accent); }
 .chip-toggle::before { content: "○ "; }
 .chip-toggle[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 .chip-toggle[aria-pressed="true"]::before { content: "● "; }
+.result-count { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: -4px 2px 12px; font-size: .88rem; color: var(--muted); }
+.result-count b { color: var(--ink); font-size: 1rem; }
+.result-count .link-btn { flex: none; font-size: .85rem; }
 .list-group-h { grid-column: 1 / -1; font-family: var(--serif); font-weight: 600; font-size: 1.02rem; margin: 8px 2px -2px; }
 .list-group-h span { font-family: var(--sans); font-weight: 400; font-size: .82rem; color: var(--muted); }
 
@@ -764,9 +767,25 @@ function render() {
     $('#clearF').onclick = clearFilters;
     return;
   }
-  if (state.view === 'list') v.innerHTML = renderList(list);
-  else if (state.view === 'series') v.innerHTML = renderSeries(list);
-  else v.innerHTML = renderShelf(list);
+  // When you've searched or filtered, show how many books match (the overall total stays at the top).
+  const filtering = state.q.trim() || state.status || state.format || state.genre;
+  const count = filtering ? (() => {
+    const unreadN = list.filter(b => (b.status || 'Unread') === 'Unread').length;
+    const readN = list.filter(b => b.status === 'Read').length;
+    return `<div class="result-count"><span><b>${list.length}</b> of ${books.length} book${books.length === 1 ? '' : 's'}${filterLabel()}
+      ${state.status ? '' : `<span class="rc-sub">· ${unreadN} unread · ${readN} read</span>`}</span>
+      <button class="link-btn" data-clearfilters>Clear</button></div>`;
+  })() : '';
+  const html = state.view === 'list' ? renderList(list) : state.view === 'series' ? renderSeries(list) : renderShelf(list);
+  v.innerHTML = count + html;
+}
+function filterLabel() {
+  const parts = [];
+  if (state.format) parts.push(state.format === 'Both' ? 'owned in both formats' : state.format === 'Kindle' ? 'on Kindle' : 'physical');
+  if (state.status) parts.push(state.status.toLowerCase());
+  if (state.genre) parts.push(`in ${esc(state.genre)}`);
+  if (state.q.trim()) parts.push(`matching “${esc(state.q.trim())}”`);
+  return parts.length ? ' ' + parts.join(', ') : '';
 }
 
 // In "stacked" mode, 2+ books from one series become a single pile (like Kindle collections).
@@ -2171,6 +2190,7 @@ document.addEventListener('click', e => {
   const es = e.target.closest('#view [data-editseries]');
   if (es) return openSeriesEditor(es.dataset.editseries);
   if (e.target.closest('#view [data-newseries]')) return openSeriesEditor(null);
+  if (e.target.closest('#view [data-clearfilters]')) return clearFilters();
   const st = e.target.closest('#view [data-stack]');
   if (st) return openSeriesFolder(st.dataset.stack);
   const o = e.target.closest('#view [data-open]');
